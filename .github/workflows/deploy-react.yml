@@ -1,0 +1,64 @@
+name: Reusable React Build & SSH Deploy
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to set up'
+        required: false
+        type: string
+        default: '20'
+      build-command:
+        description: 'NPM script command to build the project'
+        required: false
+        type: string
+        default: 'npm run build'
+      build-dir:
+        description: 'Directory containing built assets'
+        required: false
+        type: string
+        default: 'dist'
+      deploy-path:
+        description: 'Target path on Oracle Cloud server (e.g., /var/www/html)'
+        required: true
+        type: string
+    secrets:
+      SSH_HOST:
+        required: true
+      SSH_USER:
+        required: true
+      SSH_KEY:
+        required: true
+      SSH_PORT:
+        required: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build React App
+        run: ${{ inputs.build-command }}
+
+      - name: Deploy to Oracle Cloud via Rsync over SSH
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          ARGS: "-rlgoDZvc --delete"
+          SOURCE: "${{ inputs.build-dir }}/"
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ inputs.deploy-path }}
+          PORT: ${{ secrets.SSH_PORT || '22' }}
