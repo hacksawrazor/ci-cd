@@ -19,6 +19,8 @@ A centralized collection of reusable GitHub Actions workflows to standardise bui
 
 This workflow handles Node environment setup, dependency installation, building the production assets, and syncing them over SSH to your Oracle Cloud server.
 
+**Note**: Appropriate Read/Write permission required for the user in destination path.
+
 #### Setup in Calling Repository
 
 Create a workflow file in your project (e.g., `.github/workflows/deploy.yml`):
@@ -38,7 +40,7 @@ jobs:
       node-version: '20'
       build-command: 'npm run build'
       build-dir: 'dist'             # Use 'build' for Create React App, 'dist' for Vite
-      deploy-path: '/var/www/my-app' # Destination path on OCI server
+      deploy-path: '/var/www/html/hacksaw/apps/<app-name>' # Destination path on OCI server
     secrets:
       SSH_HOST: ${{ secrets.OCI_SERVER_IP }}
       SSH_USER: ${{ secrets.OCI_SERVER_USER }}
