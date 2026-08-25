@@ -56,9 +56,9 @@ jobs:
         uses: easingthemes/ssh-deploy@v5.1.0
         with:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
-          ARGS: "-rlgoDZvc --delete"
+          ARGS: "-r -l -g -o -D -Z -v -c --delete"
           SOURCE: "${{ inputs.build-dir }}/"
           REMOTE_HOST: ${{ secrets.SSH_HOST }}
           REMOTE_USER: ${{ secrets.SSH_USER }}
           TARGET: ${{ inputs.deploy-path }}
-          PORT: ${{ secrets.SSH_PORT || '22' }}
+          REMOTE_PORT: ${{ secrets.SSH_PORT || '22' }}
