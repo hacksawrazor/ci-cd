@@ -1,21 +1,14 @@
-name: Reusable Dynamic Docker Deploy to EC2
+name: Reusable Dynamic Docker Deploy to OCI
 
 on:
   workflow_call:
     inputs:
-      aws-region:
-        required: false
-        type: string
-        default: 'ap-south-1'
-      aws-role-to-assume:
-        required: true
-        type: string
       image-name:
         description: 'Image name (e.g. org/my-api)'
         required: true
         type: string
       deploy-path:
-        description: 'Target path on EC2 server'
+        description: 'Target path on the OCI server'
         required: true
         type: string
       container-port:
@@ -30,12 +23,13 @@ on:
         required: true
       SSH_KEY:
         required: true
+      SSH_PORT:
+        required: false
       # Key-value JSON containing individually mapped secrets
       INDIVIDUAL_SECRETS_JSON:
         required: false
 
 permissions:
-  id-token: write
   contents: read
   packages: write
 
@@ -62,18 +56,13 @@ jobs:
           container-port: ${{ inputs.container-port }}
           secrets-json: ${{ secrets.INDIVIDUAL_SECRETS_JSON || '{}' }}
 
-      - name: Authenticate to AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.aws-role-to-assume }}
-          aws-region: ${{ inputs.aws-region }}
-
-      - name: Deploy Container via Docker Compose on EC2
+      - name: Deploy Container via Docker Compose on OCI
         uses: hacksawrazor/ci-cd/.github/actions/deploy-docker-compose@main
         with:
           host: ${{ secrets.SSH_HOST }}
           user: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
           deploy-path: ${{ inputs.deploy-path }}
           full-image: ghcr.io/${{ inputs.image-name }}
           image-tag: ${{ github.sha }}

@@ -1,0 +1,71 @@
+name: Deploy Docker Compose
+description: Copy Compose configuration and deploy it to a remote Docker host.
+inputs:
+  host:
+    description: Remote SSH host
+    required: true
+  user:
+    description: Remote SSH user
+    required: true
+  key:
+    description: SSH private key
+    required: true
+  port:
+    description: Remote SSH port
+    required: false
+    default: '22'
+  deploy-path:
+    description: Remote deployment directory
+    required: true
+  full-image:
+    description: Fully qualified image name
+    required: true
+  image-tag:
+    description: Immutable image tag
+    required: true
+  registry:
+    description: Container registry hostname
+    required: false
+    default: ghcr.io
+  registry-username:
+    description: Container registry username
+    required: true
+  registry-token:
+    description: Container registry token
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Copy Compose and environment files
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.key }}
+        port: ${{ inputs.port }}
+        source: docker-compose.yml,.env
+        target: ${{ inputs.deploy-path }}
+
+    - name: Deploy with Docker Compose
+      uses: appleboy/ssh-action@v1.0.3
+      env:
+        FULL_IMAGE: ${{ inputs.full-image }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+        REGISTRY: ${{ inputs.registry }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        REGISTRY_USERNAME: ${{ inputs.registry-username }}
+        REGISTRY_TOKEN: ${{ inputs.registry-token }}
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.key }}
+        port: ${{ inputs.port }}
+        envs: FULL_IMAGE,IMAGE_TAG,REGISTRY,DEPLOY_PATH,REGISTRY_USERNAME,REGISTRY_TOKEN
+        script: |
+          cd "$DEPLOY_PATH"
+          echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+          export FULL_IMAGE IMAGE_TAG
+          docker compose pull
+          docker compose up -d --remove-orphans
+          rm -f .env
+          docker image prune -f

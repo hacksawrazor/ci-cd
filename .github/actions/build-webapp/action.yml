@@ -1,0 +1,27 @@
+name: Build Webapp
+description: Install Node dependencies and build a web application.
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: '20'
+  build-command:
+    description: Command used to build the application
+    required: false
+    default: npm run build
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Build webapp
+      shell: bash
+      run: ${{ inputs.build-command }}

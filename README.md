@@ -10,8 +10,22 @@ A centralized collection of reusable GitHub Actions workflows to standardise bui
 | :--- | :--- | :--- |
 | **Deploy React App to OCI** | Builds a React app and deploys static files to an Oracle Cloud VM via SSH/Rsync. | `.github/workflows/deploy-react.yml` |
 | **Dynamic Docker Deploy to EC2** | Builds image to GHCR and deploys via Docker Compose to AWS EC2 using OIDC & individual secrets. | `.github/workflows/deploy-docker-ghcr.yml` |
+| **Dynamic Docker Deploy to OCI** | Builds image to GHCR and deploys via Docker Compose to an Oracle Cloud VM over SSH. | `.github/workflows/deploy-docker-oci.yml` |
 
 ---
+
+## Shared Composite Actions
+
+The reusable workflows are assembled from step-level composite actions under `.github/actions/`:
+
+| Action | Responsibility |
+| :--- | :--- |
+| `build-docker-image` | Logs in to a registry, builds an image, and pushes immutable and `latest` tags. |
+| `prepare-docker-deployment` | Normalizes or generates Compose configuration and creates `.env` from the schema and secrets JSON. |
+| `deploy-docker-compose` | Copies deployment files and runs Docker Compose on a remote SSH host. |
+| `build-webapp` | Sets up Node.js, installs dependencies, and runs the configured webapp build command. |
+
+Reusable workflows reference these actions from `hacksawrazor/ci-cd@main`, so they also work when called by another repository. Provider-specific behavior stays in the workflow: AWS retains OIDC authentication, while OCI uses SSH deployment.
 
 ## 🚀 How to Use
 
@@ -96,3 +110,37 @@ jobs:
       
       # Maps all individual repository secrets dynamically into .env generator
       INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
+```
+
+### 3. Dynamic Docker Deploy to OCI via GHCR (deploy-docker-oci.yml)
+Builds a container image, pushes it to GHCR, and deploys it to an Oracle Cloud VM over SSH using Docker Compose.
+
+#### Setup in Calling Repository
+Create a workflow file in your backend project:
+
+```yml
+name: Deploy Application
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    uses: hacksawrazor/ci-cd/.github/workflows/deploy-docker-oci.yml@main
+    with:
+      image-name: '${{ github.repository }}'
+      deploy-path: '/home/ubuntu/apps/my-backend'
+      container-port: '3000:3000' # Optional fallback if no docker-compose.yml exists
+    secrets:
+      SSH_HOST: ${{ secrets.OCI_SERVER_IP }}
+      SSH_USER: ${{ secrets.OCI_SERVER_USER }}
+      SSH_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+      SSH_PORT: ${{ secrets.OCI_SSH_PORT }} # Optional, defaults to 22
+      INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
+```

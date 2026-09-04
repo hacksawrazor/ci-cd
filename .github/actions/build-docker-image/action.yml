@@ -1,0 +1,60 @@
+name: Build and Push Docker Image
+description: Build a Docker image and push immutable and latest tags.
+inputs:
+  registry:
+    description: Container registry hostname
+    required: false
+    default: ghcr.io
+  username:
+    description: Container registry username
+    required: true
+  password:
+    description: Container registry password or token
+    required: true
+  image-name:
+    description: Image name without the registry hostname
+    required: true
+  image-tag:
+    description: Immutable image tag
+    required: true
+  context:
+    description: Docker build context
+    required: false
+    default: .
+outputs:
+  full-image:
+    description: Fully qualified image name
+    value: ${{ steps.metadata.outputs.full-image }}
+  image-tag:
+    description: Immutable image tag
+    value: ${{ steps.metadata.outputs.image-tag }}
+runs:
+  using: composite
+  steps:
+    - name: Log in to container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    - name: Build and push image
+      shell: bash
+      env:
+        FULL_IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+        DOCKER_CONTEXT: ${{ inputs.context }}
+      run: |
+        docker build -t "$FULL_IMAGE:$IMAGE_TAG" -t "$FULL_IMAGE:latest" "$DOCKER_CONTEXT"
+        docker push "$FULL_IMAGE:$IMAGE_TAG"
+        docker push "$FULL_IMAGE:latest"
+
+    - name: Publish image metadata
+      id: metadata
+      shell: bash
+      env:
+        FULL_IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+      run: |
+        echo "full-image=$FULL_IMAGE" >> "$GITHUB_OUTPUT"
+        echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
