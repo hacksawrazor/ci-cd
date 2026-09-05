@@ -36,6 +36,17 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Prepare remote deployment directory
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.user }}
+        key: ${{ inputs.key }}
+        port: ${{ inputs.port }}
+        script: |
+          mkdir -p "${{ inputs.deploy-path }}"
+          test -w "${{ inputs.deploy-path }}"
+
     - name: Copy Compose and environment files
       uses: appleboy/scp-action@v0.1.7
       with:
