@@ -103,5 +103,3 @@ runs:
             docker compose up -d --remove-orphans
             docker image prune -f
           fi
-
-          rm -f .env
