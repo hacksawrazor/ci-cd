@@ -79,6 +79,7 @@ runs:
         IMAGE_TAG: ${{ inputs.image-tag }}
         REGISTRY: ${{ inputs.registry }}
         DEPLOY_PATH: ${{ inputs.deploy-path }}
+        USE_SUDO: ${{ inputs.use-sudo }}
         REGISTRY_USERNAME: ${{ inputs.registry-username }}
         REGISTRY_TOKEN: ${{ inputs.registry-token }}
       with:
@@ -86,12 +87,21 @@ runs:
         username: ${{ inputs.user }}
         key: ${{ inputs.key }}
         port: ${{ inputs.port }}
-        envs: FULL_IMAGE,IMAGE_TAG,REGISTRY,DEPLOY_PATH,REGISTRY_USERNAME,REGISTRY_TOKEN
+        envs: FULL_IMAGE,IMAGE_TAG,REGISTRY,DEPLOY_PATH,USE_SUDO,REGISTRY_USERNAME,REGISTRY_TOKEN
         script: |
           cd "$DEPLOY_PATH"
-          echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
-          export FULL_IMAGE IMAGE_TAG
-          docker compose pull
-          docker compose up -d --remove-orphans
+
+          if [ "$USE_SUDO" = "true" ]; then
+            echo "$REGISTRY_TOKEN" | sudo -n docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+            sudo -n env FULL_IMAGE="$FULL_IMAGE" IMAGE_TAG="$IMAGE_TAG" docker compose pull
+            sudo -n env FULL_IMAGE="$FULL_IMAGE" IMAGE_TAG="$IMAGE_TAG" docker compose up -d --remove-orphans
+            sudo -n docker image prune -f
+          else
+            echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+            export FULL_IMAGE IMAGE_TAG
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+          fi
+
           rm -f .env
-          docker image prune -f
