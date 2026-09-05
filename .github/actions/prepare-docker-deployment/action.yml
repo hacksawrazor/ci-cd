@@ -48,10 +48,6 @@ runs:
       run: |
         > .env
 
-        if [ -n "$SECRETS_JSON" ] && [ "$SECRETS_JSON" != "{}" ]; then
-          eval "$(echo "$SECRETS_JSON" | jq -r 'to_entries[] | "SECRET_\(.key)=\(@sh \(.value))"')"
-        fi
-
         if [ -f ".env.example" ]; then
           while IFS= read -r line || [ -n "$line" ]; do
             if [[ -z "$line" || "$line" =~ ^# ]]; then
@@ -61,13 +57,12 @@ runs:
 
             KEY=$(echo "$line" | cut -d '=' -f 1 | xargs)
             DEFAULT_VAL=$(echo "$line" | cut -d '=' -f 2-)
-            VAR_NAME="SECRET_${KEY}"
-            SECRET_VAL="${!VAR_NAME}"
 
-            if [ -n "$SECRET_VAL" ]; then
-              echo "${KEY}=${SECRET_VAL}" >> .env
+            if jq -e --arg key "$KEY" 'has($key) and .[$key] != null' <<< "$SECRETS_JSON" >/dev/null 2>&1; then
+              jq_value=$(jq -r --arg key "$KEY" '.[$key]' <<< "$SECRETS_JSON")
+              printf '%s=%s\n' "$KEY" "$jq_value" >> .env
             else
-              echo "${KEY}=${DEFAULT_VAL}" >> .env
+              printf '%s=%s\n' "$KEY" "$DEFAULT_VAL" >> .env
             fi
           done < .env.example
         elif [ -n "$SECRETS_JSON" ] && [ "$SECRETS_JSON" != "{}" ]; then
