@@ -43,9 +43,9 @@ runs:
       env:
         FULL_IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}
         IMAGE_TAG: ${{ inputs.image-tag }}
-        DOCKER_CONTEXT: ${{ inputs.context }}
+        BUILD_CONTEXT: ${{ inputs.context }}
       run: |
-        docker build -t "$FULL_IMAGE:$IMAGE_TAG" -t "$FULL_IMAGE:latest" "$DOCKER_CONTEXT"
+        docker build -t "$FULL_IMAGE:$IMAGE_TAG" -t "$FULL_IMAGE:latest" "$BUILD_CONTEXT"
         docker push "$FULL_IMAGE:$IMAGE_TAG"
         docker push "$FULL_IMAGE:latest"
 
