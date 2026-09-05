@@ -17,6 +17,10 @@ inputs:
   deploy-path:
     description: Remote deployment directory
     required: true
+  use-sudo:
+    description: Use passwordless sudo to prepare the remote directory
+    required: false
+    default: 'false'
   full-image:
     description: Fully qualified image name
     required: true
@@ -38,14 +42,25 @@ runs:
   steps:
     - name: Prepare remote deployment directory
       uses: appleboy/ssh-action@v1.0.3
+      env:
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        DEPLOY_USER: ${{ inputs.user }}
+        USE_SUDO: ${{ inputs.use-sudo }}
       with:
         host: ${{ inputs.host }}
         username: ${{ inputs.user }}
         key: ${{ inputs.key }}
         port: ${{ inputs.port }}
+        envs: DEPLOY_PATH,DEPLOY_USER,USE_SUDO
         script: |
-          mkdir -p "${{ inputs.deploy-path }}"
-          test -w "${{ inputs.deploy-path }}"
+          if [ "$USE_SUDO" = "true" ]; then
+            sudo -n mkdir -p "$DEPLOY_PATH"
+            sudo -n chown -R "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_PATH"
+          else
+            mkdir -p "$DEPLOY_PATH"
+          fi
+
+          test -w "$DEPLOY_PATH"
 
     - name: Copy Compose and environment files
       uses: appleboy/scp-action@v0.1.7

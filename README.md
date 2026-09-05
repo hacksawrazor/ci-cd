@@ -103,6 +103,7 @@ jobs:
       image-name: '${{ github.repository }}'
       deploy-path: '/home/ubuntu/apps/my-backend'
       container-port: '3000:3000' # Optional fallback if no docker-compose.yml exists
+      use-sudo: false # Set true for paths such as /opt/apps/my-backend
     secrets:
       SSH_HOST: ${{ secrets.EC2_PUBLIC_IP }}
       SSH_USER: ${{ secrets.EC2_SSH_USER }}

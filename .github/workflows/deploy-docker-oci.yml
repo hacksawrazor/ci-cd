@@ -11,6 +11,11 @@ on:
         description: 'Target path on the OCI server'
         required: true
         type: string
+      use-sudo:
+        description: 'Use passwordless sudo to prepare paths under /opt or other privileged directories'
+        required: false
+        type: boolean
+        default: true
       container-port:
         description: 'Fallback port mapping if no docker-compose.yml exists'
         required: false
@@ -64,6 +69,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           deploy-path: ${{ inputs.deploy-path }}
+          use-sudo: ${{ inputs.use-sudo }}
           full-image: ghcr.io/${{ inputs.image-name }}
           image-tag: ${{ github.sha }}
           registry: ghcr.io
