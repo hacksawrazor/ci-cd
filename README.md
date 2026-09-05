@@ -67,7 +67,7 @@ Builds container images using Docker, pushes them to GitHub Container Registry (
 #### Features
 - Dynamic Compose Execution: Uses the project's custom docker-compose.yml if present; otherwise generates a default Compose file dynamically for single-container apps.
 
-- Schema-Based .env Generation: Reads .env.example from the repository, injects individual secrets mapped from GitHub, and uses default fallback values defined in .env.example.
+- Schema-Based .env Generation: Reads .env.example from the repository, injects individual secrets mapped from GitHub, and uses default fallback values defined in .env.example. Multiline secret values are written with literal `\n` sequences so Docker Compose accepts the generated env file.
 
 - Zero Long-Lived AWS Keys: Authenticates to AWS IAM using GitHub OIDC tokens instead of static access keys.
 
@@ -112,6 +112,22 @@ jobs:
       # Maps all individual repository secrets dynamically into .env generator
       INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
 ```
+
+    #### Multiline Secrets
+
+    Docker Compose env files require one physical line per variable. For multiline values such as RSA private keys, store the key as a GitHub secret and reference it through `.env.example`:
+
+    ```env
+    PRIVATE_KEY=
+    ```
+
+    The deployment action writes newlines as literal `\n` sequences. Your application must restore them before using the key. For example, in Node.js:
+
+    ```js
+    const privateKey = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
+    ```
+
+    Do not commit private keys to `.env` or `.env.example`. Rotate a key immediately if it is exposed.
 
 ### 3. Dynamic Docker Deploy to OCI via GHCR (deploy-docker-oci.yml)
 Builds a container image, pushes it to GHCR, and deploys it to an Oracle Cloud VM over SSH using Docker Compose.
