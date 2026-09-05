@@ -22,7 +22,7 @@ The reusable workflows are assembled from step-level composite actions under `.g
 | :--- | :--- |
 | `build-docker-image` | Logs in to a registry, builds an image, and pushes immutable and `latest` tags. |
 | `prepare-docker-deployment` | Normalizes or generates Compose configuration and creates `.env` from the schema and secrets JSON. |
-| `deploy-docker-compose` | Copies deployment files and runs Docker Compose on a remote SSH host. |
+| `deploy-docker-compose` | Copies deployment files, prepares bind-mount permissions, and runs Docker Compose on a remote SSH host. |
 | `build-webapp` | Sets up Node.js, installs dependencies, and runs the configured webapp build command. |
 
 Reusable workflows reference these actions from `hacksawrazor/ci-cd@main`, so they also work when called by another repository. Provider-specific behavior stays in the workflow: AWS retains OIDC authentication, while OCI uses SSH deployment.
@@ -72,6 +72,8 @@ Builds container images using Docker, pushes them to GitHub Container Registry (
 - Zero Long-Lived AWS Keys: Authenticates to AWS IAM using GitHub OIDC tokens instead of static access keys.
 
 - Secure Cleanup: Deletes the temporary .env file on the remote server immediately after containers start up.
+- Volume Permissions: Creates host directories for Compose bind mounts with `0775` permissions and applies a numeric service `user` as the directory owner. Docker-managed named volumes are created by Docker.
+- Manual Compose Runs: Persists `FULL_IMAGE` and `IMAGE_TAG` in the remote `.env`, so `docker compose up -d` can be run manually from the deployment directory.
 
 #### Prerequisites
 1. AWS OIDC Provider & Role Setup: Configure an IAM Role in AWS trusting repo:<ORGANIZATION_OR_USERNAME>/* with sts:AssumeRoleWithWebIdentity.
@@ -113,21 +115,48 @@ jobs:
       INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
 ```
 
-    #### Multiline Secrets
+#### Multiline Secrets
 
-    Docker Compose env files require one physical line per variable. For multiline values such as RSA private keys, store the key as a GitHub secret and reference it through `.env.example`:
+Docker Compose env files require one physical line per variable. For multiline values such as RSA private keys, store the key as a GitHub secret and reference it through `.env.example`:
 
-    ```env
-    PRIVATE_KEY=
-    ```
+```env
+PRIVATE_KEY=
+```
 
-    The deployment action writes newlines as literal `\n` sequences. Your application must restore them before using the key. For example, in Node.js:
+The deployment action writes newlines as literal `\n` sequences. Your application must restore them before using the key. For example, in Node.js:
 
-    ```js
-    const privateKey = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
-    ```
+```js
+const privateKey = process.env.PRIVATE_KEY.replace(/\\n/g, '\n');
+```
 
-    Do not commit private keys to `.env` or `.env.example`. Rotate a key immediately if it is exposed.
+Do not commit private keys to `.env` or `.env.example`. Rotate a key immediately if it is exposed.
+
+#### Compose Volumes
+
+Before starting the stack, the deployment action resolves the Compose file and prepares each bind-mount source directory on the remote host. If a service declares a numeric `user` such as `1000:1000`, that ownership is applied to its bind-mount directory. Named volumes are managed by Docker and are not changed by this step.
+
+For bind mounts that need a specific application UID/GID, declare it explicitly in the service:
+
+```yaml
+services:
+  app:
+    user: "1000:1000"
+    volumes:
+      - ./data:/app/data
+```
+
+Use the workflow's `use-sudo: true` option when a bind-mount source is outside the deployment user's writable directory.
+
+After deployment, you can manage the stack directly on the server:
+
+```bash
+cd /path/to/deployment
+docker compose pull
+docker compose up -d
+docker compose logs -f
+```
+
+The remote `.env` contains the image and tag selected by the workflow. To deploy a different image version manually, update `IMAGE_TAG` in `.env` and run `docker compose pull && docker compose up -d`.
 
 ### 3. Dynamic Docker Deploy to OCI via GHCR (deploy-docker-oci.yml)
 Builds a container image, pushes it to GHCR, and deploys it to an Oracle Cloud VM over SSH using Docker Compose.

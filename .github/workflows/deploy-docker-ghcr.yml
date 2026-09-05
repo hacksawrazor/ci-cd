@@ -23,6 +23,11 @@ on:
         required: false
         type: string
         default: '8000:8000'
+      use-sudo:
+        description: 'Use passwordless sudo to prepare bind-mount paths under privileged directories'
+        required: false
+        type: boolean
+        default: false
     secrets:
       SSH_HOST:
         required: true
@@ -75,6 +80,7 @@ jobs:
           user: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           deploy-path: ${{ inputs.deploy-path }}
+          use-sudo: ${{ inputs.use-sudo }}
           full-image: ghcr.io/${{ inputs.image-name }}
           image-tag: ${{ github.sha }}
           registry: ghcr.io

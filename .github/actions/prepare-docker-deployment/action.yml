@@ -32,7 +32,7 @@ runs:
           cat << EOF > docker-compose.yml
         services:
           app:
-            image: ${FULL_IMAGE}:latest
+            image: ${FULL_IMAGE}:\${IMAGE_TAG:-latest}
             restart: unless-stopped
             ports:
               - "${PORT_MAPPING}"
