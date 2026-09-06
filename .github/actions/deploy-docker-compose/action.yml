@@ -168,11 +168,25 @@ runs:
             echo "$REGISTRY_TOKEN" | sudo -n docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
             sudo -n env FULL_IMAGE="$FULL_IMAGE" IMAGE_TAG="$IMAGE_TAG" docker compose pull
             sudo -n env FULL_IMAGE="$FULL_IMAGE" IMAGE_TAG="$IMAGE_TAG" docker compose up -d --remove-orphans
+            image_ids=$(sudo -n docker ps -aq | xargs -r sudo -n docker inspect --format '{{.Image}}' | sed 's/^sha256://' | cut -c1-12 | sort -u)
+            sudo -n docker image ls "$FULL_IMAGE" --format '{{.ID}}' | sort -u | while read -r image_id; do
+              normalized_image_id=$(sed 's/^sha256://' <<< "$image_id" | cut -c1-12)
+              if ! grep -Fxq "$normalized_image_id" <<< "$image_ids"; then
+                sudo -n docker image rm "$image_id" || true
+              fi
+            done
             sudo -n docker image prune -f
           else
             echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
             export FULL_IMAGE IMAGE_TAG
             docker compose pull
             docker compose up -d --remove-orphans
+            image_ids=$(docker ps -aq | xargs -r docker inspect --format '{{.Image}}' | sed 's/^sha256://' | cut -c1-12 | sort -u)
+            docker image ls "$FULL_IMAGE" --format '{{.ID}}' | sort -u | while read -r image_id; do
+              normalized_image_id=$(sed 's/^sha256://' <<< "$image_id" | cut -c1-12)
+              if ! grep -Fxq "$normalized_image_id" <<< "$image_ids"; then
+                docker image rm "$image_id" || true
+              fi
+            done
             docker image prune -f
           fi
