@@ -72,7 +72,7 @@ Builds container images using Docker, pushes them to GitHub Container Registry (
 - Zero Long-Lived AWS Keys: Authenticates to AWS IAM using GitHub OIDC tokens instead of static access keys.
 
 - Secure Cleanup: Deletes the temporary .env file on the remote server immediately after containers start up.
-- Volume Permissions: Creates host directories for Compose bind mounts with `0775` permissions and applies a numeric service `user` as the directory owner. Docker-managed named volumes are created by Docker.
+- Volume Permissions: Resolves Compose bind mounts, creates their host directories, and recursively applies the numeric service `user` ownership plus `u+rwX,go+rX` permissions before containers start. Docker-managed named volumes are created by Docker.
 - Manual Compose Runs: Persists `FULL_IMAGE` and `IMAGE_TAG` in the remote `.env`, so `docker compose up -d` can be run manually from the deployment directory.
 
 #### Prerequisites
@@ -133,7 +133,7 @@ Do not commit private keys to `.env` or `.env.example`. Rotate a key immediately
 
 #### Compose Volumes
 
-Before starting the stack, the deployment action resolves the Compose file and prepares each bind-mount source directory on the remote host. If a service declares a numeric `user` such as `1000:1000`, that ownership is applied to its bind-mount directory. Named volumes are managed by Docker and are not changed by this step.
+Before starting the stack, the deployment action resolves the Compose file and prepares each bind-mount source directory on the remote host. If a service declares a numeric `user` such as `1000:1000`, that ownership is recursively applied to the entire bind-mount tree, along with `u+rwX,go+rX` permissions so the container user can write. Named volumes are managed by Docker and are not changed by this step. Permission preparation runs after `docker-compose.yml` and `.env` are copied and fails the deployment if any directory operation fails.
 
 For bind mounts that need a specific application UID/GID, declare it explicitly in the service:
 

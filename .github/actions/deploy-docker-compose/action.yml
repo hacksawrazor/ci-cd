@@ -106,28 +106,40 @@ runs:
         port: ${{ inputs.port }}
         envs: DEPLOY_PATH,USE_SUDO,FULL_IMAGE,IMAGE_TAG
         script: |
+          set -Eeuo pipefail
           cd "$DEPLOY_PATH"
 
-          volume_mounts=$(docker compose config --format json | jq -r '
-            .services // {} |
-            to_entries[] |
-            .key as $service |
-            (.value.user // "") as $user |
-            (.value.volumes // [])[] |
-            select(.type == "bind") |
-            [$service, $user, .source] |
-            @tsv
-          ')
+          if [ "$USE_SUDO" = "true" ]; then
+            volume_mounts=$(sudo -n docker compose config --format json | jq -r '
+              .services // {} |
+              to_entries[] |
+              .key as $service |
+              (.value.user // "") as $user |
+              (.value.volumes // [])[] |
+              select(.type == "bind") |
+              [$service, $user, .source] |
+              @tsv
+            ')
+          else
+            volume_mounts=$(docker compose config --format json | jq -r '
+              .services // {} |
+              to_entries[] |
+              .key as $service |
+              (.value.user // "") as $user |
+              (.value.volumes // [])[] |
+              select(.type == "bind") |
+              [$service, $user, .source] |
+              @tsv
+            ')
+          fi
 
           while IFS=$'\t' read -r service container_user host_path; do
             [ -n "$host_path" ] || continue
 
             if [ "$USE_SUDO" = "true" ]; then
               sudo -n mkdir -p "$host_path"
-              sudo -n chmod 0775 "$host_path"
             else
               mkdir -p "$host_path"
-              chmod 0775 "$host_path"
             fi
 
             if [[ "$container_user" =~ ^[0-9]+(:[0-9]+)?$ ]]; then
@@ -138,9 +150,11 @@ runs:
               esac
 
               if [ "$USE_SUDO" = "true" ]; then
-                sudo -n chown "$owner" "$host_path"
+                sudo -n chown -R "$owner" "$host_path"
+                sudo -n chmod -R u+rwX,go+rX "$host_path"
               else
-                chown "$owner" "$host_path"
+                chown -R "$owner" "$host_path"
+                chmod -R u+rwX,go+rX "$host_path"
               fi
             fi
           done <<< "$volume_mounts"
