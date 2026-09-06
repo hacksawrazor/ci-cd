@@ -11,6 +11,7 @@ A centralized collection of reusable GitHub Actions workflows to standardise bui
 | **Deploy React App to OCI** | Builds a React app and deploys static files to an Oracle Cloud VM via SSH/Rsync. | `.github/workflows/deploy-react.yml` |
 | **Dynamic Docker Deploy to EC2** | Builds image to GHCR and deploys via Docker Compose to AWS EC2 using OIDC & individual secrets. | `.github/workflows/deploy-docker-ghcr.yml` |
 | **Dynamic Docker Deploy to OCI** | Builds image to GHCR and deploys via Docker Compose to an Oracle Cloud VM over SSH. | `.github/workflows/deploy-docker-oci.yml` |
+| **Existing Docker Image Deploy to OCI** | Pulls an existing GHCR image tag and deploys it via Docker Compose without rebuilding. | `.github/workflows/deploy-docker-oci-existing.yml` |
 
 ---
 
@@ -188,5 +189,39 @@ jobs:
       SSH_USER: ${{ secrets.OCI_SERVER_USER }}
       SSH_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
       SSH_PORT: ${{ secrets.OCI_SSH_PORT }} # Optional, defaults to 22
+      INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
+```
+
+### 4. Deploy an Existing Docker Image to OCI (`deploy-docker-oci-existing.yml`)
+Pulls the selected image tag from GHCR and deploys it without building or pushing an image. The workflow still prepares Compose bind-mount permissions and runs `docker compose pull` followed by `docker compose up -d --remove-orphans`.
+
+```yml
+name: Deploy Existing Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: Image tag to deploy
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    uses: hacksawrazor/ci-cd/.github/workflows/deploy-docker-oci-existing.yml@main
+    with:
+      image-name: '${{ github.repository }}'
+      image-tag: ${{ inputs.image-tag }}
+      deploy-path: '/home/ubuntu/apps/my-backend'
+      use-sudo: true
+    secrets:
+      SSH_HOST: ${{ secrets.OCI_SERVER_IP }}
+      SSH_USER: ${{ secrets.OCI_SERVER_USER }}
+      SSH_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+      SSH_PORT: ${{ secrets.OCI_SSH_PORT }}
       INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
 ```

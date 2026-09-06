@@ -1,0 +1,73 @@
+name: Reusable Existing Docker Image Deploy to OCI
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Image name (e.g. org/my-api)'
+        required: true
+        type: string
+      image-tag:
+        description: 'Existing image tag to pull and deploy'
+        required: false
+        type: string
+        default: latest
+      deploy-path:
+        description: 'Target path on the OCI server'
+        required: true
+        type: string
+      use-sudo:
+        description: 'Use passwordless sudo to prepare paths under /opt or other privileged directories'
+        required: false
+        type: boolean
+        default: true
+      container-port:
+        description: 'Fallback port mapping if no docker-compose.yml exists'
+        required: false
+        type: string
+        default: '8000:8000'
+    secrets:
+      SSH_HOST:
+        required: true
+      SSH_USER:
+        required: true
+      SSH_KEY:
+        required: true
+      SSH_PORT:
+        required: false
+      INDIVIDUAL_SECRETS_JSON:
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Docker Deployment
+        uses: hacksawrazor/ci-cd/.github/actions/prepare-docker-deployment@main
+        with:
+          full-image: ghcr.io/${{ inputs.image-name }}
+          container-port: ${{ inputs.container-port }}
+          secrets-json: ${{ secrets.INDIVIDUAL_SECRETS_JSON || '{}' }}
+
+      - name: Deploy Existing Docker Image to OCI
+        uses: hacksawrazor/ci-cd/.github/actions/deploy-docker-compose@main
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          user: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          deploy-path: ${{ inputs.deploy-path }}
+          use-sudo: ${{ inputs.use-sudo }}
+          full-image: ghcr.io/${{ inputs.image-name }}
+          image-tag: ${{ inputs.image-tag }}
+          registry: ghcr.io
+          registry-username: ${{ github.actor }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
