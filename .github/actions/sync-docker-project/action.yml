@@ -1,5 +1,5 @@
 name: Sync Docker Project
-description: Back up the remote project, synchronize repository files, and transfer an opaque environment payload.
+description: Back up the remote project, synchronize repository files, and transfer the environment payload.
 inputs:
   ssh-dir:
     description: Directory containing SSH files
@@ -20,9 +20,10 @@ inputs:
   environment-file:
     description: Remote environment file
     required: true
-  environment-payload:
-    description: Base64 file containing the opaque environment payload
-    required: true
+  environment-vars-json:
+    description: JSON object of non-secret variables to overlay on the defaults
+    required: false
+    default: '{}'
   release-id:
     description: Unique deployment identifier
     required: true
@@ -32,10 +33,45 @@ runs:
     - name: Create environment payload
       shell: bash
       env:
-        DEPLOY_ENV: ${{ inputs.environment-payload }}
+        ENVIRONMENT_FILE: ${{ inputs.environment-file }}
+        ENVIRONMENT_VARS_JSON: ${{ inputs.environment-vars-json }}
       run: |
         set -Eeuo pipefail
-        printf '%s' "$DEPLOY_ENV" | base64 -w 0 > "$RUNNER_TEMP/deploy-env.b64"
+        payload_file="$RUNNER_TEMP/deploy-env"
+        default_file="$ENVIRONMENT_FILE.default"
+        if [ -f "$default_file" ]; then
+            jq -e 'type == "object"' <<< "$ENVIRONMENT_VARS_JSON" >/dev/null
+            defaults='{}'
+            while IFS= read -r line || [ -n "$line" ]; do
+              if [[ -z "$line" || "$line" =~ ^[[:space:]]*# || "$line" != *=* ]]; then
+                continue
+              fi
+              key="${line%%=*}"
+              key="${key#${key%%[![:space:]]*}}"
+              key="${key%${key##*[![:space:]]}}"
+              value="${line#*=}"
+              defaults=$(jq -c --arg key "$key" --arg value "$value" '. + {($key): $value}' <<< "$defaults")
+            done < "$default_file"
+
+            merged=$(jq -c --argjson vars "$ENVIRONMENT_VARS_JSON" \
+              '. as $defaults | $defaults * ($vars | with_entries(select(.key as $key | $defaults | has($key))))' \
+              <<< "$defaults")
+            : > "$payload_file"
+            while IFS= read -r encoded_entry; do
+              entry=$(printf '%s' "$encoded_entry" | base64 --decode)
+              key=$(jq -r '.key' <<< "$entry")
+              value=$(jq -r '.value | tostring' <<< "$entry")
+              value=${value//$'\r'/}
+              value=${value//$'\n'/\\n}
+              printf '%s=%s\n' "$key" "$value" >> "$payload_file"
+            done < <(jq -r 'to_entries[] | @base64' <<< "$merged")
+        fi
+
+        if [ -f "$payload_file" ]; then
+          base64 -w 0 "$payload_file" > "$RUNNER_TEMP/deploy-env.b64"
+        else
+          : > "$RUNNER_TEMP/deploy-env.b64"
+        fi
 
     - name: Back up remote project
       shell: bash

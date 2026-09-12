@@ -19,7 +19,7 @@ The `Update reusable workflow tags` workflow automatically maintains `v1` and `l
 - validates the Compose configuration
 - serializes deployments per environment
 - syncs the repository to the remote host over SSH
-- optionally writes one opaque `.env` payload
+- writes an environment file from a tracked `.env.default` schema and non-secret repository variables
 - runs `docker compose pull` and `up -d` for the complete project or selected services
 - checks running and unhealthy selected services
 - restores the previous files and restarts the previous stack if deployment fails
@@ -50,7 +50,7 @@ jobs:
       compose-file: compose/production.yml
       compose-project: infra
       environment-file: .env
-      environment-file: .env
+      environment-vars-json: ${{ toJson(vars) }}
       # Omit to deploy every service. Otherwise use space-separated names.
       services: postgres redis
       pull-images: true
@@ -60,10 +60,9 @@ jobs:
       SERVER_USER: ${{ secrets.AWS_SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.AWS_SERVER_SSH_KEY }}
       SERVER_SSH_PORT: ${{ secrets.AWS_SERVER_SSH_PORT }}
-      DEPLOY_ENV: ${{ secrets.AWS_DEPLOY_ENV }}
 ```
 
-Use the same workflow for OCI by changing the target secrets and `environment` value. `DEPLOY_ENV` is optional; when omitted, an existing remote environment file is preserved. Its contents are treated as opaque data and are never printed by the workflow.
+    Use the same workflow for OCI by changing the target secrets and `environment` value. The workflow reads `${environment-file}.default`, overlays matching non-secret variables from `environment-vars-json`, and preserves defaults for variables that are unavailable.
 
 The reusable-workflow caller syntax does not reliably pass caller GitHub Environment secrets through `secrets: inherit`. Map repository or organization secrets explicitly as above, or use distinct names such as `AWS_*` and `OCI_*` in the caller repository. Do not put application secrets in this repository.
 
@@ -105,6 +104,7 @@ with:
   compose-file: services/postgres/compose.yml
   compose-project: postgres
   environment-file: services/postgres/.env
+  environment-vars-json: ${{ toJson(vars) }}
 ```
 
 This produces `/opt/infra-docker/services/postgres/compose.yml` and `/opt/infra-docker/services/postgres/.env`. The workflow creates missing parent directories and passes the environment file to Compose with `--env-file`, so it is used for variable interpolation as well as container environment configuration.
@@ -126,7 +126,7 @@ services:
       - config/oauth.env
 ```
 
-Keep non-secret configuration in those tracked files and pass the complete runtime `.env` through `DEPLOY_ENV` when shared or secret variables are needed. The reusable workflow does not interpret container-specific variable names.
+Keep non-secret configuration defaults in tracked `.env.default` files. Pass `${{ toJson(vars) }}` through `environment-vars-json` to overlay matching GitHub repository or environment variables. Only keys present in the default file are emitted. The generated file is transferred to the configured remote `environment-file` before Compose starts.
 
 For separate deployment triggers, create one caller job per service. Jobs using the same `environment` are serialized by the deployment lock, which prevents two rsync operations from modifying the same deployment directory at once:
 
@@ -140,12 +140,12 @@ jobs:
       compose-file: compose/production.yml
       compose-project: infra
       environment-file: .env
+      environment-vars-json: ${{ toJson(vars) }}
       services: postgres
     secrets:
       SERVER_HOST: ${{ secrets.AWS_SERVER_HOST }}
       SERVER_USER: ${{ secrets.AWS_SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.AWS_SERVER_SSH_KEY }}
-      DEPLOY_ENV: ${{ secrets.AWS_DEPLOY_ENV }}
 
   oauth:
     needs: postgres
@@ -156,12 +156,12 @@ jobs:
       compose-file: compose/production.yml
       compose-project: infra
       environment-file: .env
+      environment-vars-json: ${{ toJson(vars) }}
       services: oauth
     secrets:
       SERVER_HOST: ${{ secrets.AWS_SERVER_HOST }}
       SERVER_USER: ${{ secrets.AWS_SERVER_USER }}
       SERVER_SSH_KEY: ${{ secrets.AWS_SERVER_SSH_KEY }}
-      DEPLOY_ENV: ${{ secrets.AWS_DEPLOY_ENV }}
 ```
 
 The deployment workflow is assembled from these reusable composite actions:
@@ -169,7 +169,7 @@ The deployment workflow is assembled from these reusable composite actions:
 | Action | Responsibility |
 | :--- | :--- |
 | `configure-ssh` | Creates the temporary SSH key and known-hosts files. |
-| `sync-docker-project` | Backs up the remote directory, synchronizes repository files, and transfers the opaque environment payload. |
+| `sync-docker-project` | Backs up the remote directory, synchronizes repository files, and transfers the generated environment payload. |
 | `deploy-docker-project` | Validates Compose, pulls and starts all or selected services, checks health, prunes optionally, and rolls back on failure. |
 
 ---
