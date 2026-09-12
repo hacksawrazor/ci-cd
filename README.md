@@ -2,6 +2,16 @@
 
 A centralized collection of reusable GitHub Actions workflows to standardise build, test, and deployment pipelines across projects.
 
+### Releasing reusable workflows
+
+Clients should pin reusable workflows to `@v1` or `@latest`. Every push to `main`, including a merged pull request, moves both tags to the newest commit:
+
+```bash
+git push origin main
+```
+
+The `Update reusable workflow tags` workflow automatically maintains `v1` and `latest`. These are intentionally floating tags: clients receive every merged change as soon as the tag update completes. Use a semantic version tag when an immutable release reference is required.
+
 ## Generic Docker Infrastructure Deployment
 
 `docker-deploy.yml` is the generic deployment workflow for repositories that own Docker infrastructure. The caller repository owns the desired state (`compose/`, `config/`, scripts, and environment structure); this repository owns the deployment mechanics:

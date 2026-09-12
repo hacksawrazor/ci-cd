@@ -1,0 +1,30 @@
+name: Update reusable workflow tags
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  update-tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move stable tags
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for tag in v1 latest; do
+            git tag -fa "$tag" "$GITHUB_SHA" -m "Update $tag to $GITHUB_SHA"
+            git push origin "refs/tags/$tag" --force
+          done
