@@ -17,6 +17,10 @@ inputs:
   deploy-path:
     description: Remote deployment directory
     required: true
+  use-sudo:
+    description: Use passwordless sudo to prepare deployment paths under privileged directories
+    required: false
+    default: 'false'
   environment-file:
     description: Remote environment file
     required: true
@@ -81,13 +85,20 @@ runs:
         SERVER_USER: ${{ inputs.user }}
         SERVER_SSH_PORT: ${{ inputs.port }}
         DEPLOY_PATH: ${{ inputs.deploy-path }}
+        USE_SUDO: ${{ inputs.use-sudo }}
         RELEASE_ID: ${{ inputs.release-id }}
       run: |
         set -Eeuo pipefail
         ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
         remote="$SERVER_USER@$SERVER_HOST"
-        ssh "${ssh_args[@]}" "$remote" env DEPLOY_PATH="$DEPLOY_PATH" RELEASE_ID="$RELEASE_ID" 'bash -s' <<'REMOTE'
+        ssh "${ssh_args[@]}" "$remote" env DEPLOY_PATH="$DEPLOY_PATH" DEPLOY_USER="$SERVER_USER" USE_SUDO="$USE_SUDO" RELEASE_ID="$RELEASE_ID" 'bash -s' <<'REMOTE'
         set -Eeuo pipefail
+        if [ "$USE_SUDO" = "true" ]; then
+          sudo -n mkdir -p "$DEPLOY_PATH"
+          sudo -n chown -R "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_PATH"
+        else
+          mkdir -p "$DEPLOY_PATH"
+        fi
         mkdir -p "$DEPLOY_PATH/.deploy-backups"
         if [ "$(find "$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name .deploy-backups -print -quit 2>/dev/null)" ]; then
           tar --exclude=.deploy-backups -czf "$DEPLOY_PATH/.deploy-backups/$RELEASE_ID.tgz" -C "$DEPLOY_PATH" .

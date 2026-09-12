@@ -91,6 +91,8 @@ jobs:
 
 The remote host must provide Docker Engine, the Docker Compose plugin, and an SSH account able to write `deploy-path`. The workflow excludes `.git/`, `.github/`, and its own `.deploy-backups/` directory from synchronization. Backups are kept on the server only for the duration of the deployment and are removed after success.
 
+For deployment paths under directories such as `/opt`, set `use-sudo: true`. The SSH user must have passwordless sudo permission to create and take ownership of the deployment path.
+
 Use `dry-run: true` to sync and validate the project without pulling images or changing running services. Use `prune: true` only when the remote host is dedicated to this deployment, because it runs `docker image prune -f`.
 
 ### Deploy individual services

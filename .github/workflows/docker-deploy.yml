@@ -11,6 +11,11 @@ on:
         description: Remote directory containing the Compose project
         required: true
         type: string
+      use-sudo:
+        description: Use passwordless sudo to prepare deployment paths under privileged directories
+        required: false
+        type: boolean
+        default: false
       compose-file:
         description: Compose file relative to the repository and deploy path
         required: false
@@ -121,6 +126,7 @@ jobs:
           user: ${{ secrets.SERVER_USER }}
           port: ${{ secrets.SERVER_SSH_PORT || '22' }}
           deploy-path: ${{ inputs.deploy-path }}
+          use-sudo: ${{ inputs.use-sudo }}
           environment-file: ${{ inputs.environment-file }}
           environment-vars-json: ${{ inputs.environment-vars-json }}
           release-id: ${{ github.sha }}
