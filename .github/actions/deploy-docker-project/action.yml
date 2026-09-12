@@ -77,9 +77,9 @@ runs:
         RELEASE_ID: ${{ inputs.release-id }}
       run: |
         set -Eeuo pipefail
-        ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
+        ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
         remote="$SERVER_USER@$SERVER_HOST"
-        ssh "${ssh_args[@]}" "$remote" env \
+        timeout --signal=TERM --kill-after=30s 15m ssh "${ssh_args[@]}" "$remote" env \
           DEPLOY_PATH="$DEPLOY_PATH" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT="$COMPOSE_PROJECT" \
           ENVIRONMENT_FILE="$ENVIRONMENT_FILE" SERVICES="$SERVICES" PULL_IMAGES="$PULL_IMAGES" \
           HEALTH_CHECK="$HEALTH_CHECK" REMOVE_ORPHANS="$REMOVE_ORPHANS" PRUNE="$PRUNE" \
@@ -128,6 +128,7 @@ runs:
         }
         trap rollback ERR
         if [ "$PULL_IMAGES" = "true" ]; then
+          echo 'Pulling Compose images.'
           docker compose "${compose_services[@]}" pull
         fi
         up_args=(up -d)
@@ -137,12 +138,15 @@ runs:
         if [ "$REMOVE_ORPHANS" = "true" ]; then
           up_args+=(--remove-orphans)
         fi
+        echo 'Starting Compose services.'
         docker compose "${compose_services[@]}" "${up_args[@]}"
 
         if [ "$HEALTH_CHECK" = "true" ]; then
+          echo 'Checking Compose service health.'
           docker compose "${compose_services[@]}" ps
-          test -n "$(docker compose "${compose_services[@]}" ps --status running --services)"
-          if docker compose "${compose_services[@]}" ps --format json | jq -e 'select(.Health == "unhealthy")' >/dev/null; then
+          running_services=$(docker compose "${compose_services[@]}" ps --status running --services)
+          test -n "$running_services"
+          if docker compose "${compose_services[@]}" ps --format json | jq -e 'if type == "array" then any(.[]; .Health == "unhealthy") else .Health == "unhealthy" end' >/dev/null; then
             echo 'A Compose service is unhealthy.' >&2
             exit 1
           fi
