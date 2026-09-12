@@ -1,0 +1,36 @@
+name: Configure Deployment SSH
+description: Create an SSH key and known-hosts directory for deployment actions.
+inputs:
+  host:
+    description: Remote SSH host
+    required: true
+  key:
+    description: SSH private key
+    required: true
+  port:
+    description: Remote SSH port
+    required: false
+    default: '22'
+outputs:
+  ssh-dir:
+    description: Directory containing the configured SSH files
+    value: ${{ steps.configure.outputs.ssh-dir }}
+runs:
+  using: composite
+  steps:
+    - id: configure
+      name: Configure SSH files
+      shell: bash
+      env:
+        SERVER_HOST: ${{ inputs.host }}
+        SERVER_SSH_KEY: ${{ inputs.key }}
+        SERVER_SSH_PORT: ${{ inputs.port }}
+      run: |
+        set -Eeuo pipefail
+        ssh_dir="$RUNNER_TEMP/deployment-ssh"
+        install -m 700 -d "$ssh_dir"
+        printf '%s\n' "$SERVER_SSH_KEY" > "$ssh_dir/id_ed25519"
+        chmod 600 "$ssh_dir/id_ed25519"
+        ssh-keyscan -p "$SERVER_SSH_PORT" -H "$SERVER_HOST" > "$ssh_dir/known_hosts" 2>/dev/null
+        chmod 600 "$ssh_dir/known_hosts"
+        printf 'ssh-dir=%s\n' "$ssh_dir" >> "$GITHUB_OUTPUT"

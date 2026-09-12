@@ -1,0 +1,143 @@
+name: Reusable Docker Compose Deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment and concurrency key
+        required: true
+        type: string
+      deploy-path:
+        description: Remote directory containing the Compose project
+        required: true
+        type: string
+      compose-file:
+        description: Compose file relative to the repository and deploy path
+        required: false
+        type: string
+        default: compose.yml
+      compose-project:
+        description: Optional Docker Compose project name
+        required: false
+        type: string
+        default: ''
+      services:
+        description: Space-separated Compose services; empty deploys the complete project
+        required: false
+        type: string
+        default: ''
+      environment-file:
+        description: Remote environment file written from DEPLOY_ENV
+        required: false
+        type: string
+        default: .env
+      pull-images:
+        description: Pull images before starting the stack
+        required: false
+        type: boolean
+        default: true
+      health-check:
+        description: Fail when the deployed Compose project has no running services or unhealthy services
+        required: false
+        type: boolean
+        default: true
+      remove-orphans:
+        description: Remove services not present in the Compose project
+        required: false
+        type: boolean
+        default: true
+      prune:
+        description: Remove unused Docker images after a successful deployment
+        required: false
+        type: boolean
+        default: false
+      dry-run:
+        description: Validate and sync the project without changing running services
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      SERVER_HOST:
+        required: true
+      SERVER_USER:
+        required: true
+      SERVER_SSH_KEY:
+        required: true
+      SERVER_SSH_PORT:
+        required: false
+      DEPLOY_ENV:
+        description: Complete environment-file contents; the workflow treats this as opaque data
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        shell: bash
+        env:
+          COMPOSE_FILE: ${{ inputs.compose-file }}
+          COMPOSE_PROJECT: ${{ inputs.compose-project }}
+        run: |
+          set -Eeuo pipefail
+
+          if [ ! -f "$COMPOSE_FILE" ]; then
+            echo "Compose file not found: $COMPOSE_FILE" >&2
+            exit 1
+          fi
+
+          compose_args=(-f "$COMPOSE_FILE")
+          if [ -n "$COMPOSE_PROJECT" ]; then
+            compose_args=(-p "$COMPOSE_PROJECT" "${compose_args[@]}")
+          fi
+
+          docker compose "${compose_args[@]}" config --quiet
+
+      - name: Configure SSH
+        id: ssh
+        uses: hacksawrazor/ci-cd/.github/actions/configure-ssh@main
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+
+      - name: Sync Docker project
+        uses: hacksawrazor/ci-cd/.github/actions/sync-docker-project@main
+        with:
+          ssh-dir: ${{ steps.ssh.outputs.ssh-dir }}
+          host: ${{ secrets.SERVER_HOST }}
+          user: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+          deploy-path: ${{ inputs.deploy-path }}
+          environment-file: ${{ inputs.environment-file }}
+          environment-payload: ${{ secrets.DEPLOY_ENV }}
+          release-id: ${{ github.sha }}
+
+      - name: Deploy Docker services
+        uses: hacksawrazor/ci-cd/.github/actions/deploy-docker-project@main
+        with:
+          ssh-dir: ${{ steps.ssh.outputs.ssh-dir }}
+          host: ${{ secrets.SERVER_HOST }}
+          user: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+          deploy-path: ${{ inputs.deploy-path }}
+          compose-file: ${{ inputs.compose-file }}
+          compose-project: ${{ inputs.compose-project }}
+          environment-file: ${{ inputs.environment-file }}
+          services: ${{ inputs.services }}
+          pull-images: ${{ inputs.pull-images }}
+          health-check: ${{ inputs.health-check }}
+          remove-orphans: ${{ inputs.remove-orphans }}
+          prune: ${{ inputs.prune }}
+          dry-run: ${{ inputs.dry-run }}
+          release-id: ${{ github.sha }}

@@ -1,0 +1,93 @@
+name: Sync Docker Project
+description: Back up the remote project, synchronize repository files, and transfer an opaque environment payload.
+inputs:
+  ssh-dir:
+    description: Directory containing SSH files
+    required: true
+  host:
+    description: Remote SSH host
+    required: true
+  user:
+    description: Remote SSH user
+    required: true
+  port:
+    description: Remote SSH port
+    required: false
+    default: '22'
+  deploy-path:
+    description: Remote deployment directory
+    required: true
+  environment-file:
+    description: Remote environment file
+    required: true
+  environment-payload:
+    description: Base64 file containing the opaque environment payload
+    required: true
+  release-id:
+    description: Unique deployment identifier
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Create environment payload
+      shell: bash
+      env:
+        DEPLOY_ENV: ${{ inputs.environment-payload }}
+      run: |
+        set -Eeuo pipefail
+        printf '%s' "$DEPLOY_ENV" | base64 -w 0 > "$RUNNER_TEMP/deploy-env.b64"
+
+    - name: Back up remote project
+      shell: bash
+      env:
+        SSH_DIR: ${{ inputs.ssh-dir }}
+        SERVER_HOST: ${{ inputs.host }}
+        SERVER_USER: ${{ inputs.user }}
+        SERVER_SSH_PORT: ${{ inputs.port }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        RELEASE_ID: ${{ inputs.release-id }}
+      run: |
+        set -Eeuo pipefail
+        ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
+        remote="$SERVER_USER@$SERVER_HOST"
+        ssh "${ssh_args[@]}" "$remote" env DEPLOY_PATH="$DEPLOY_PATH" RELEASE_ID="$RELEASE_ID" 'bash -s' <<'REMOTE'
+        set -Eeuo pipefail
+        mkdir -p "$DEPLOY_PATH/.deploy-backups"
+        if [ "$(find "$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name .deploy-backups -print -quit 2>/dev/null)" ]; then
+          tar --exclude=.deploy-backups -czf "$DEPLOY_PATH/.deploy-backups/$RELEASE_ID.tgz" -C "$DEPLOY_PATH" .
+        fi
+        mkdir -p "$DEPLOY_PATH"
+        REMOTE
+
+    - name: Synchronize repository files
+      shell: bash
+      env:
+        SSH_DIR: ${{ inputs.ssh-dir }}
+        SERVER_HOST: ${{ inputs.host }}
+        SERVER_USER: ${{ inputs.user }}
+        SERVER_SSH_PORT: ${{ inputs.port }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        ENVIRONMENT_FILE: ${{ inputs.environment-file }}
+      run: |
+        set -Eeuo pipefail
+        ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
+        rsync -az --delete \
+          --exclude='.git/' \
+          --exclude='.github/' \
+          --exclude='.deploy-backups/' \
+          --exclude="$ENVIRONMENT_FILE" \
+          -e "ssh ${ssh_args[*]}" ./ "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
+
+    - name: Transfer environment payload
+      shell: bash
+      env:
+        SSH_DIR: ${{ inputs.ssh-dir }}
+        SERVER_HOST: ${{ inputs.host }}
+        SERVER_USER: ${{ inputs.user }}
+        SERVER_SSH_PORT: ${{ inputs.port }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        RELEASE_ID: ${{ inputs.release-id }}
+      run: |
+        set -Eeuo pipefail
+        scp_args=(-i "$SSH_DIR/id_ed25519" -P "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
+        scp "${scp_args[@]}" "$RUNNER_TEMP/deploy-env.b64" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/.deploy-env-$RELEASE_ID"

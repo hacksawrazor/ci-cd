@@ -1,0 +1,58 @@
+name: Reusable Docker Compose Validation
+
+on:
+  workflow_call:
+    inputs:
+      compose-file:
+        description: Compose file to validate
+        required: false
+        type: string
+        default: compose.yml
+      compose-project:
+        description: Optional Docker Compose project name
+        required: false
+        type: string
+        default: ''
+      environment-file:
+        description: Optional environment file relative to the repository
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        shell: bash
+        env:
+          COMPOSE_FILE: ${{ inputs.compose-file }}
+          COMPOSE_PROJECT: ${{ inputs.compose-project }}
+          ENVIRONMENT_FILE: ${{ inputs.environment-file }}
+        run: |
+          set -Eeuo pipefail
+
+          if [ ! -f "$COMPOSE_FILE" ]; then
+            echo "Compose file not found: $COMPOSE_FILE" >&2
+            exit 1
+          fi
+          if [ -n "$ENVIRONMENT_FILE" ] && [ ! -f "$ENVIRONMENT_FILE" ]; then
+            echo "Environment file not found: $ENVIRONMENT_FILE" >&2
+            exit 1
+          fi
+
+          compose_args=(-f "$COMPOSE_FILE")
+          if [ -n "$COMPOSE_PROJECT" ]; then
+            compose_args=(-p "$COMPOSE_PROJECT" "${compose_args[@]}")
+          fi
+          if [ -n "$ENVIRONMENT_FILE" ]; then
+            compose_args=(--env-file "$ENVIRONMENT_FILE" "${compose_args[@]}")
+          fi
+
+          docker compose "${compose_args[@]}" config --quiet

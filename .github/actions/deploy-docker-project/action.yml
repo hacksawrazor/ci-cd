@@ -1,0 +1,155 @@
+name: Deploy Docker Project
+description: Deploy all or selected Docker Compose services and roll back on failure.
+inputs:
+  ssh-dir:
+    description: Directory containing SSH files
+    required: true
+  host:
+    description: Remote SSH host
+    required: true
+  user:
+    description: Remote SSH user
+    required: true
+  port:
+    description: Remote SSH port
+    required: false
+    default: '22'
+  deploy-path:
+    description: Remote deployment directory
+    required: true
+  compose-file:
+    description: Compose file relative to deploy-path
+    required: true
+  compose-project:
+    description: Optional Compose project name
+    required: false
+    default: ''
+  environment-file:
+    description: Remote environment file
+    required: true
+  services:
+    description: Space-separated Compose services; empty deploys the complete project
+    required: false
+    default: ''
+  pull-images:
+    description: Pull selected images before starting services
+    required: false
+    default: 'true'
+  health-check:
+    description: Check selected services after deployment
+    required: false
+    default: 'true'
+  remove-orphans:
+    description: Remove services not present in the Compose project
+    required: false
+    default: 'true'
+  prune:
+    description: Remove unused Docker images after deployment
+    required: false
+    default: 'false'
+  dry-run:
+    description: Validate without changing running services
+    required: false
+    default: 'false'
+  release-id:
+    description: Unique deployment identifier
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Deploy Compose services
+      shell: bash
+      env:
+        SSH_DIR: ${{ inputs.ssh-dir }}
+        SERVER_HOST: ${{ inputs.host }}
+        SERVER_USER: ${{ inputs.user }}
+        SERVER_SSH_PORT: ${{ inputs.port }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        COMPOSE_FILE: ${{ inputs.compose-file }}
+        COMPOSE_PROJECT: ${{ inputs.compose-project }}
+        ENVIRONMENT_FILE: ${{ inputs.environment-file }}
+        SERVICES: ${{ inputs.services }}
+        PULL_IMAGES: ${{ inputs.pull-images }}
+        HEALTH_CHECK: ${{ inputs.health-check }}
+        REMOVE_ORPHANS: ${{ inputs.remove-orphans }}
+        PRUNE: ${{ inputs.prune }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        RELEASE_ID: ${{ inputs.release-id }}
+      run: |
+        set -Eeuo pipefail
+        ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
+        remote="$SERVER_USER@$SERVER_HOST"
+        ssh "${ssh_args[@]}" "$remote" env \
+          DEPLOY_PATH="$DEPLOY_PATH" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT="$COMPOSE_PROJECT" \
+          ENVIRONMENT_FILE="$ENVIRONMENT_FILE" SERVICES="$SERVICES" PULL_IMAGES="$PULL_IMAGES" \
+          HEALTH_CHECK="$HEALTH_CHECK" REMOVE_ORPHANS="$REMOVE_ORPHANS" PRUNE="$PRUNE" \
+          DRY_RUN="$DRY_RUN" RELEASE_ID="$RELEASE_ID" \
+          'bash -s' <<'REMOTE'
+        set -Eeuo pipefail
+        cd "$DEPLOY_PATH"
+        payload="$DEPLOY_PATH/.deploy-env-$RELEASE_ID"
+        if [ -s "$payload" ]; then
+          mkdir -p "$(dirname "$ENVIRONMENT_FILE")"
+          base64 -d "$payload" > "$ENVIRONMENT_FILE"
+          chmod 600 "$ENVIRONMENT_FILE"
+        fi
+        rm -f "$payload"
+
+        compose_args=(-f "$COMPOSE_FILE")
+        if [ -n "$COMPOSE_PROJECT" ]; then
+          compose_args=(-p "$COMPOSE_PROJECT" "${compose_args[@]}")
+        fi
+        if [ -f "$ENVIRONMENT_FILE" ]; then
+          compose_args=(--env-file "$ENVIRONMENT_FILE" "${compose_args[@]}")
+        fi
+        service_args=()
+        if [ -n "$SERVICES" ]; then
+          read -r -a service_args <<< "$SERVICES"
+        fi
+        compose_services=("${compose_args[@]}" "${service_args[@]}")
+
+        docker compose "${compose_args[@]}" config --quiet
+        if [ "$DRY_RUN" = "true" ]; then
+          rm -f "$DEPLOY_PATH/.deploy-backups/$RELEASE_ID.tgz"
+          exit 0
+        fi
+
+        rollback() {
+          backup="$DEPLOY_PATH/.deploy-backups/$RELEASE_ID.tgz"
+          if [ -f "$backup" ]; then
+            find "$DEPLOY_PATH" -mindepth 1 -maxdepth 1 ! -name .deploy-backups -exec rm -rf {} +
+            tar -xzf "$backup" -C "$DEPLOY_PATH"
+            rollback_args=(up -d --remove-orphans)
+            if [ -n "$SERVICES" ]; then
+              rollback_args+=(--no-deps)
+            fi
+            docker compose "${compose_services[@]}" "${rollback_args[@]}" || true
+          fi
+        }
+        trap rollback ERR
+        if [ "$PULL_IMAGES" = "true" ]; then
+          docker compose "${compose_services[@]}" pull
+        fi
+        up_args=(up -d)
+        if [ -n "$SERVICES" ]; then
+          up_args+=(--no-deps)
+        fi
+        if [ "$REMOVE_ORPHANS" = "true" ]; then
+          up_args+=(--remove-orphans)
+        fi
+        docker compose "${compose_services[@]}" "${up_args[@]}"
+
+        if [ "$HEALTH_CHECK" = "true" ]; then
+          docker compose "${compose_services[@]}" ps
+          test -n "$(docker compose "${compose_services[@]}" ps --status running --services)"
+          if docker compose "${compose_services[@]}" ps --format json | jq -e 'select(.Health == "unhealthy")' >/dev/null; then
+            echo 'A Compose service is unhealthy.' >&2
+            exit 1
+          fi
+        fi
+        if [ "$PRUNE" = "true" ]; then
+          docker image prune -f
+        fi
+        rm -f "$DEPLOY_PATH/.deploy-backups/$RELEASE_ID.tgz"
+        trap - ERR
+        REMOTE
