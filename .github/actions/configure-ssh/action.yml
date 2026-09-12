@@ -28,9 +28,30 @@ runs:
       run: |
         set -Eeuo pipefail
         ssh_dir="$RUNNER_TEMP/deployment-ssh"
+        if [ -z "$SERVER_HOST" ]; then
+          echo 'SSH host is empty.' >&2
+          exit 1
+        fi
+        if ! [[ "$SERVER_SSH_PORT" =~ ^[0-9]+$ ]] || [ "$SERVER_SSH_PORT" -lt 1 ] || [ "$SERVER_SSH_PORT" -gt 65535 ]; then
+          echo "Invalid SSH port: $SERVER_SSH_PORT" >&2
+          exit 1
+        fi
+        if [ -z "$SERVER_SSH_KEY" ]; then
+          echo 'SSH private key is empty.' >&2
+          exit 1
+        fi
         install -m 700 -d "$ssh_dir"
         printf '%s\n' "$SERVER_SSH_KEY" > "$ssh_dir/id_ed25519"
         chmod 600 "$ssh_dir/id_ed25519"
-        ssh-keyscan -p "$SERVER_SSH_PORT" -H "$SERVER_HOST" > "$ssh_dir/known_hosts" 2>/dev/null
+        if ! timeout --signal=TERM --kill-after=5s 15s \
+          ssh-keyscan -T 10 -p "$SERVER_SSH_PORT" -H "$SERVER_HOST" > "$ssh_dir/known_hosts" 2>/dev/null; then
+          echo "Unable to retrieve the SSH host key from $SERVER_HOST:$SERVER_SSH_PORT." >&2
+          echo 'Verify SERVER_HOST, SERVER_SSH_PORT, firewall rules, and that sshd is listening.' >&2
+          exit 1
+        fi
+        if [ ! -s "$ssh_dir/known_hosts" ]; then
+          echo "SSH host key scan returned no keys for $SERVER_HOST:$SERVER_SSH_PORT." >&2
+          exit 1
+        fi
         chmod 600 "$ssh_dir/known_hosts"
         printf 'ssh-dir=%s\n' "$ssh_dir" >> "$GITHUB_OUTPUT"
