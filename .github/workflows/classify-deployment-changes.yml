@@ -112,9 +112,6 @@ jobs:
           if [ "$config_only" = true ]; then
             full_deploy=false
           fi
-          if [ "$full_deploy" = false ]; then
-            config_only=false
-          fi
 
           echo "config_only=$config_only" >> "$GITHUB_OUTPUT"
           echo "full_deploy=$full_deploy" >> "$GITHUB_OUTPUT"
