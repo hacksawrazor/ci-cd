@@ -7,10 +7,6 @@ on:
         description: Newline-separated glob patterns for configuration-only files
         required: true
         type: string
-      full-deploy-paths:
-        description: Newline-separated glob patterns requiring a full deployment
-        required: true
-        type: string
       force-full-deploy:
         description: Mark the change as requiring a full deployment
         required: false
@@ -46,7 +42,6 @@ jobs:
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
           CONFIG_PATHS: ${{ inputs.config-paths }}
-          FULL_DEPLOY_PATHS: ${{ inputs.full-deploy-paths }}
           FORCE_FULL_DEPLOY: ${{ inputs.force-full-deploy }}
         run: |
           set -Eeuo pipefail
@@ -85,13 +80,7 @@ jobs:
             fi
 
             config_only=false
-            while IFS= read -r pattern; do
-              [ -z "$pattern" ] && continue
-              if [[ "$changed_file" == $pattern ]]; then
-                full_deploy=true
-                break
-              fi
-            done <<< "$FULL_DEPLOY_PATHS"
+            full_deploy=true
           done < <(printf '%s\n' "${changed_files[@]}")
 
           if [ "$config_only" = true ]; then
