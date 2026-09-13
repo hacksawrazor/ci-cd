@@ -7,6 +7,11 @@ on:
         description: Newline-separated glob patterns for configuration-only files
         required: true
         type: string
+      ignored-paths:
+        description: Newline-separated glob patterns ignored by deployment classification
+        required: false
+        type: string
+        default: ''
       force-full-deploy:
         description: Mark the change as requiring a full deployment
         required: false
@@ -33,7 +38,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Classify changes
         id: classify
@@ -42,6 +47,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
           CONFIG_PATHS: ${{ inputs.config-paths }}
+          IGNORED_PATHS: ${{ inputs.ignored-paths }}
           FORCE_FULL_DEPLOY: ${{ inputs.force-full-deploy }}
         run: |
           set -Eeuo pipefail
@@ -65,8 +71,22 @@ jobs:
 
           config_only=true
           full_deploy=false
+          classified_files=0
           while IFS= read -r changed_file; do
             [ -z "$changed_file" ] && continue
+            is_ignored=false
+            while IFS= read -r pattern; do
+              [ -z "$pattern" ] && continue
+              if [[ "$changed_file" == $pattern ]]; then
+                is_ignored=true
+                break
+              fi
+            done <<< "$IGNORED_PATHS"
+            if [ "$is_ignored" = true ]; then
+              continue
+            fi
+
+            classified_files=$((classified_files + 1))
             is_config=false
             while IFS= read -r pattern; do
               [ -z "$pattern" ] && continue
@@ -82,6 +102,12 @@ jobs:
             config_only=false
             full_deploy=true
           done < <(printf '%s\n' "${changed_files[@]}")
+
+          if [ "$classified_files" -eq 0 ]; then
+            echo 'config_only=false' >> "$GITHUB_OUTPUT"
+            echo 'full_deploy=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ "$config_only" = true ]; then
             full_deploy=false
