@@ -13,12 +13,12 @@ on:
         type: boolean
         default: false
     outputs:
-      config-only:
+      config_only:
         description: All changed files matched a configuration-only pattern
-        value: ${{ jobs.classify.outputs.config-only }}
-      full-deploy:
+        value: ${{ jobs.classify.outputs.config_only }}
+      full_deploy:
         description: At least one changed file matched a full-deploy pattern
-        value: ${{ jobs.classify.outputs.full-deploy }}
+        value: ${{ jobs.classify.outputs.full_deploy }}
 
 permissions:
   contents: read
@@ -27,8 +27,8 @@ jobs:
   classify:
     runs-on: ubuntu-latest
     outputs:
-      config-only: ${{ steps.classify.outputs.config-only }}
-      full-deploy: ${{ steps.classify.outputs.full-deploy }}
+      config_only: ${{ steps.classify.outputs.config_only }}
+      full_deploy: ${{ steps.classify.outputs.full_deploy }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -47,8 +47,8 @@ jobs:
           set -Eeuo pipefail
 
           if [ "$FORCE_FULL_DEPLOY" = 'true' ]; then
-            echo 'config-only=false' >> "$GITHUB_OUTPUT"
-            echo 'full-deploy=true' >> "$GITHUB_OUTPUT"
+            echo 'config_only=false' >> "$GITHUB_OUTPUT"
+            echo 'full_deploy=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -58,8 +58,8 @@ jobs:
             mapfile -t changed_files < <(git diff --name-only "$BEFORE" "$SHA")
           fi
           if [ "${#changed_files[@]}" -eq 0 ]; then
-            echo 'config-only=false' >> "$GITHUB_OUTPUT"
-            echo 'full-deploy=false' >> "$GITHUB_OUTPUT"
+            echo 'config_only=false' >> "$GITHUB_OUTPUT"
+            echo 'full_deploy=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -90,5 +90,5 @@ jobs:
             config_only=false
           fi
 
-          echo "config-only=$config_only" >> "$GITHUB_OUTPUT"
-          echo "full-deploy=$full_deploy" >> "$GITHUB_OUTPUT"
+          echo "config_only=$config_only" >> "$GITHUB_OUTPUT"
+          echo "full_deploy=$full_deploy" >> "$GITHUB_OUTPUT"
