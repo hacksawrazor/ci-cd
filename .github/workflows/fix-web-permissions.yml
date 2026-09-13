@@ -1,0 +1,54 @@
+name: Fix Web Deployment Permissions
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy-path:
+        description: 'Remote deployment directory to repair'
+        required: true
+        type: string
+      owner:
+        description: 'Linux owner; leave empty to use SSH_USER'
+        required: false
+        type: string
+        default: ''
+      group:
+        description: 'Linux group for the deployment directory'
+        required: false
+        type: string
+        default: 'www-data'
+      directory-mode:
+        description: 'Directory permissions'
+        required: false
+        type: string
+        default: '775'
+      file-mode:
+        description: 'File permissions'
+        required: false
+        type: string
+        default: '664'
+jobs:
+  fix-permissions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fix remote deployment permissions
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          DEPLOY_PATH: ${{ inputs.deploy-path }}
+          DEPLOY_OWNER: ${{ inputs.owner || secrets.SERVER_USER_OCI }}
+          DEPLOY_GROUP: ${{ inputs.group }}
+          DIRECTORY_MODE: ${{ inputs.directory-mode }}
+          FILE_MODE: ${{ inputs.file-mode }}
+        with:
+          host: ${{ secrets.SERVER_HOST_OCI }}
+          username: ${{ secrets.SERVER_USER_OCI }}
+          key: ${{ secrets.SERVER_SSH_KEY_OCI }}
+          port: ${{ secrets.SERVER_SSH_PORT_OCI || '22' }}
+          envs: DEPLOY_PATH,DEPLOY_OWNER,DEPLOY_GROUP,DIRECTORY_MODE,FILE_MODE
+          script: |
+            set -eu
+            sudo mkdir -p -- "$DEPLOY_PATH"
+            sudo chown -R "$DEPLOY_OWNER:$DEPLOY_GROUP" -- "$DEPLOY_PATH"
+            sudo find "$DEPLOY_PATH" -type d -exec chmod "$DIRECTORY_MODE" {} \;
+            sudo find "$DEPLOY_PATH" -type f -exec chmod "$FILE_MODE" {} \;

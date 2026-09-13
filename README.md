@@ -181,6 +181,7 @@ The deployment workflow is assembled from these reusable composite actions:
 | Workflow | Description | Path |
 | :--- | :--- | :--- |
 | **Deploy React App to OCI** | Builds a React app and deploys static files to an Oracle Cloud VM via SSH/Rsync. | `.github/workflows/deploy-react.yml` |
+| **Fix Web Deployment Permissions** | Manually repairs ownership and permissions for a remote web deployment directory over SSH. | `.github/workflows/fix-web-permissions.yml` |
 | **Generic Docker Compose Deployment** | Syncs any Docker infrastructure repository to a remote host, deploys it, checks health, and rolls back files on failure. | `.github/workflows/docker-deploy.yml` |
 | **Generic Docker Compose Validation** | Validates a caller repository's Compose configuration without deploying it. | `.github/workflows/docker-validate.yml` |
 | **Dynamic Docker Deploy to EC2** | Builds image to GHCR and deploys via Docker Compose to AWS EC2 using OIDC & individual secrets. | `.github/workflows/deploy-docker-ghcr.yml` |
@@ -236,7 +237,19 @@ jobs:
       SSH_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
       # SSH_PORT: ${{ secrets.OCI_SSH_PORT }} # Optional, defaults to 22
 ```
-### 2. Dynamic Docker Deploy to AWS EC2 via GHCR (deploy-docker-ghcr.yml)
+
+### 2. Fix Web Deployment Permissions (`fix-web-permissions.yml`)
+
+Run this workflow manually from the **Actions** tab when the React deployment user cannot create directories under the web root. Configure these repository or environment secrets:
+
+- `SSH_HOST`
+- `SSH_USER`
+- `SSH_KEY`
+- `SSH_PORT` (optional)
+
+Provide the exact React `deploy-path` when starting the workflow. The workflow creates the path, assigns it to `SSH_USER` and the selected group, then applies the configured directory and file modes recursively. The SSH user must have passwordless `sudo` permission for `mkdir`, `chown`, `find`, and `chmod`.
+
+### 3. Dynamic Docker Deploy to AWS EC2 via GHCR (deploy-docker-ghcr.yml)
 Builds container images using Docker, pushes them to GitHub Container Registry (GHCR), authenticates passwordlessly to AWS using OpenID Connect (OIDC), and deploys using Docker Compose on an AWS EC2 instance.
 
 #### Features
@@ -333,7 +346,7 @@ docker compose logs -f
 
 The remote `.env` contains the image and tag selected by the workflow. To deploy a different image version manually, update `IMAGE_TAG` in `.env` and run `docker compose pull && docker compose up -d`.
 
-### 3. Dynamic Docker Deploy to OCI via GHCR (deploy-docker-oci.yml)
+### 4. Dynamic Docker Deploy to OCI via GHCR (deploy-docker-oci.yml)
 Builds a container image, pushes it to GHCR, and deploys it to an Oracle Cloud VM over SSH using Docker Compose.
 
 #### Setup in Calling Repository
@@ -366,7 +379,7 @@ jobs:
       INDIVIDUAL_SECRETS_JSON: ${{ toJson(secrets) }}
 ```
 
-### 4. Deploy an Existing Docker Image to OCI (`deploy-docker-oci-existing.yml`)
+### 5. Deploy an Existing Docker Image to OCI (`deploy-docker-oci-existing.yml`)
 Pulls the selected image tag from GHCR and deploys it without building or pushing an image. The workflow still prepares Compose bind-mount permissions and runs `docker compose pull` followed by `docker compose up -d --remove-orphans`.
 
 ```yml
