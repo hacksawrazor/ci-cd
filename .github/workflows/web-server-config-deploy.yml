@@ -1,0 +1,108 @@
+name: Reusable Web Server Configuration Deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment and concurrency key
+        required: true
+        type: string
+      deploy-path:
+        description: Remote directory containing the web server configuration
+        required: true
+        type: string
+      service:
+        description: Docker Compose service to test and restart
+        required: false
+        type: string
+        default: nginx
+      config-path:
+        description: Repository path containing the configuration files
+        required: false
+        type: string
+        default: conf.d
+      config-file:
+        description: Optional repository path of a single configuration file
+        required: false
+        type: string
+        default: ''
+      use-sudo:
+        description: Use passwordless sudo for the remote Docker commands
+        required: false
+        type: boolean
+        default: false
+      dry-run:
+        description: Validate and sync without restarting the service
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      SERVER_HOST:
+        required: true
+      SERVER_USER:
+        required: true
+      SERVER_SSH_KEY:
+        required: true
+      SERVER_SSH_PORT:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-server-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        id: ssh
+        uses: hacksawrazor/ci-cd/.github/actions/configure-ssh@main
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT || '22' }}
+
+      - name: Sync web server configuration and restart
+        shell: bash
+        env:
+          SSH_DIR: ${{ steps.ssh.outputs.ssh-dir }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_PORT: ${{ secrets.SERVER_SSH_PORT || '22' }}
+          DEPLOY_PATH: ${{ inputs.deploy-path }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          SERVICE: ${{ inputs.service }}
+          USE_SUDO: ${{ inputs.use-sudo }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -Eeuo pipefail
+
+          ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
+          rsync_args=(-az --delete -e "ssh ${ssh_args[*]}")
+          rsync "${rsync_args[@]}" "$CONFIG_PATH/" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/$CONFIG_PATH/"
+          if [ -n "$CONFIG_FILE" ]; then
+            rsync -az -e "ssh ${ssh_args[*]}" "$CONFIG_FILE" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/$CONFIG_FILE"
+          fi
+
+          ssh "${ssh_args[@]}" "$SERVER_USER@$SERVER_HOST" \
+            env DEPLOY_PATH="$DEPLOY_PATH" SERVICE="$SERVICE" USE_SUDO="$USE_SUDO" DRY_RUN="$DRY_RUN" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          docker_cmd=(docker)
+          compose_cmd=(docker compose -f "$DEPLOY_PATH/docker-compose.yml")
+          if [ "$USE_SUDO" = "true" ]; then
+            docker_cmd=(sudo -n docker)
+            compose_cmd=(sudo -n docker compose -f "$DEPLOY_PATH/docker-compose.yml")
+          fi
+
+          "${docker_cmd[@]}" exec "$SERVICE" nginx -t
+          if [ "$DRY_RUN" != "true" ]; then
+            "${compose_cmd[@]}" restart "$SERVICE"
+          fi
+          REMOTE
