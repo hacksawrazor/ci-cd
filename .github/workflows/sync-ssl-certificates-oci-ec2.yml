@@ -1,0 +1,94 @@
+name: Sync SSL Certificates from OCI to EC2
+
+on:
+  workflow_dispatch:
+    inputs:
+      reload-nginx:
+        description: Reload the Nginx container after the certificate sync
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ssl-certificates-oci-ec2
+  cancel-in-progress: false
+
+jobs:
+  sync-certificates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure OCI SSH
+        id: oci-ssh
+        uses: ./.github/actions/configure-ssh
+        with:
+          host: ${{ secrets.SERVER_HOST_OCI }}
+          key: ${{ secrets.SERVER_SSH_KEY_OCI }}
+          port: ${{ secrets.SERVER_SSH_PORT_OCI || '22' }}
+          directory-name: oci-ssh
+
+      - name: Configure EC2 SSH
+        id: ec2-ssh
+        uses: ./.github/actions/configure-ssh
+        with:
+          host: ${{ secrets.SERVER_HOST_EC2 }}
+          key: ${{ secrets.SERVER_SSH_KEY_EC2 }}
+          port: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
+          directory-name: ec2-ssh
+
+      - name: Stream certificates from OCI to EC2
+        shell: bash
+        env:
+          OCI_SSH_DIR: ${{ steps.oci-ssh.outputs.ssh-dir }}
+          OCI_HOST: ${{ secrets.SERVER_HOST_OCI }}
+          OCI_USER: ${{ secrets.SERVER_USER_OCI }}
+          OCI_PORT: ${{ secrets.SERVER_SSH_PORT_OCI || '22' }}
+          EC2_SSH_DIR: ${{ steps.ec2-ssh.outputs.ssh-dir }}
+          EC2_HOST: ${{ secrets.SERVER_HOST_EC2 }}
+          EC2_USER: ${{ secrets.SERVER_USER_EC2 }}
+          EC2_PORT: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
+        run: |
+          set -Eeuo pipefail
+
+          oci_ssh=(
+            -i "$OCI_SSH_DIR/id_ed25519"
+            -p "$OCI_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$OCI_SSH_DIR/known_hosts"
+          )
+          ec2_ssh=(
+            -i "$EC2_SSH_DIR/id_ed25519"
+            -p "$EC2_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$EC2_SSH_DIR/known_hosts"
+          )
+
+          ssh "${oci_ssh[@]}" "$OCI_USER@$OCI_HOST" \
+            'sudo -n tar --create --gzip --file=- --directory=/ etc/letsencrypt' \
+            | ssh "${ec2_ssh[@]}" "$EC2_USER@$EC2_HOST" \
+              'sudo -n tar --extract --gzip --file=- --directory=/'
+
+      - name: Reload Nginx on EC2
+        if: ${{ inputs.reload-nginx }}
+        shell: bash
+        env:
+          SSH_DIR: ${{ steps.ec2-ssh.outputs.ssh-dir }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST_EC2 }}
+          SERVER_USER: ${{ secrets.SERVER_USER_EC2 }}
+          SERVER_PORT: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
+        run: |
+          set -Eeuo pipefail
+          ssh_args=(
+            -i "$SSH_DIR/id_ed25519"
+            -p "$SERVER_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts"
+          )
+          ssh "${ssh_args[@]}" "$SERVER_USER@$SERVER_HOST" \
+            'sudo -n docker exec nginx nginx -t && sudo -n docker exec nginx nginx -s reload'

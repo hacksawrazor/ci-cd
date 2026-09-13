@@ -11,6 +11,10 @@ inputs:
     description: Remote SSH port
     required: false
     default: '22'
+  directory-name:
+    description: Unique directory name for the generated SSH files
+    required: false
+    default: deployment-ssh
 outputs:
   ssh-dir:
     description: Directory containing the configured SSH files
@@ -25,9 +29,10 @@ runs:
         SERVER_HOST: ${{ inputs.host }}
         SERVER_SSH_KEY: ${{ inputs.key }}
         SERVER_SSH_PORT: ${{ inputs.port }}
+        SSH_DIRECTORY_NAME: ${{ inputs.directory-name }}
       run: |
         set -Eeuo pipefail
-        ssh_dir="$RUNNER_TEMP/deployment-ssh"
+        ssh_dir="$RUNNER_TEMP/$SSH_DIRECTORY_NAME"
         if [ -z "$SERVER_HOST" ]; then
           echo 'SSH host is empty.' >&2
           exit 1

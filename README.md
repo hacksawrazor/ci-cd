@@ -187,6 +187,18 @@ The deployment workflow is assembled from these reusable composite actions:
 | **Dynamic Docker Deploy to EC2** | Builds image to GHCR and deploys via Docker Compose to AWS EC2 using OIDC & individual secrets. | `.github/workflows/deploy-docker-ghcr.yml` |
 | **Dynamic Docker Deploy to OCI** | Builds image to GHCR and deploys via Docker Compose to an Oracle Cloud VM over SSH. | `.github/workflows/deploy-docker-oci.yml` |
 | **Existing Docker Image Deploy to OCI** | Pulls an existing GHCR image tag and deploys it via Docker Compose without rebuilding. | `.github/workflows/deploy-docker-oci-existing.yml` |
+| **Sync SSL Certificates from OCI to EC2** | Manually streams `/etc/letsencrypt` from an OCI host to an EC2 host over SSH and optionally reloads Nginx. | `.github/workflows/sync-ssl-certificates-oci-ec2.yml` |
+
+### Sync SSL Certificates from OCI to EC2
+
+Run `Sync SSL Certificates from OCI to EC2` from the Actions tab. Configure these repository or organization secrets:
+
+```text
+SERVER_HOST_OCI       SERVER_USER_OCI       SERVER_SSH_KEY_OCI       SERVER_SSH_PORT_OCI (optional)
+SERVER_HOST_EC2       SERVER_USER_EC2       SERVER_SSH_KEY_EC2       SERVER_SSH_PORT_EC2 (optional)
+```
+
+Both SSH users need passwordless `sudo` permission for `tar`; the EC2 user also needs permission to run `docker exec nginx`. The workflow transfers the complete Let’s Encrypt directory and preserves its symlinks, including the `live` and `archive` directories.
 
 ---
 
