@@ -32,7 +32,7 @@ on:
         type: boolean
         default: false
       dry-run:
-        description: Validate and sync without restarting the service
+        description: Sync and validate configuration without reloading the service
         required: false
         type: boolean
         default: false
@@ -95,14 +95,12 @@ jobs:
             env DEPLOY_PATH="$DEPLOY_PATH" SERVICE="$SERVICE" USE_SUDO="$USE_SUDO" DRY_RUN="$DRY_RUN" 'bash -s' <<'REMOTE'
           set -Eeuo pipefail
           docker_cmd=(docker)
-          compose_cmd=(docker compose -f "$DEPLOY_PATH/docker-compose.yml")
           if [ "$USE_SUDO" = "true" ]; then
             docker_cmd=(sudo -n docker)
-            compose_cmd=(sudo -n docker compose -f "$DEPLOY_PATH/docker-compose.yml")
           fi
 
           "${docker_cmd[@]}" exec "$SERVICE" nginx -t
           if [ "$DRY_RUN" != "true" ]; then
-            "${compose_cmd[@]}" restart "$SERVICE"
+            "${docker_cmd[@]}" exec "$SERVICE" nginx -s reload
           fi
           REMOTE
