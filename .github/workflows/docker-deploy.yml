@@ -21,6 +21,16 @@ on:
         required: false
         type: string
         default: compose.yml
+      project-path:
+        description: Project directory relative to the repository; its contents are synced to deploy-path
+        required: false
+        type: string
+        default: .
+      remote-compose-file:
+        description: Compose file path relative to deploy-path (defaults to compose-file)
+        required: false
+        type: string
+        default: ''
       compose-project:
         description: Optional Docker Compose project name
         required: false
@@ -127,6 +137,7 @@ jobs:
           user: ${{ secrets.SERVER_USER }}
           port: ${{ secrets.SERVER_SSH_PORT || '22' }}
           deploy-path: ${{ inputs.deploy-path }}
+          project-path: ${{ inputs.project-path }}
           use-sudo: ${{ inputs.use-sudo }}
           environment-file: ${{ inputs.environment-file }}
           environment-vars-json: ${{ inputs.environment-vars-json }}
@@ -140,7 +151,7 @@ jobs:
           user: ${{ secrets.SERVER_USER }}
           port: ${{ secrets.SERVER_SSH_PORT || '22' }}
           deploy-path: ${{ inputs.deploy-path }}
-          compose-file: ${{ inputs.compose-file }}
+          compose-file: ${{ inputs.remote-compose-file || inputs.compose-file }}
           compose-project: ${{ inputs.compose-project }}
           environment-file: ${{ inputs.environment-file }}
           services: ${{ inputs.services }}

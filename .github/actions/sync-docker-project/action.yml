@@ -17,6 +17,10 @@ inputs:
   deploy-path:
     description: Remote deployment directory
     required: true
+  project-path:
+    description: Local project directory whose contents are synchronized
+    required: false
+    default: .
   use-sudo:
     description: Use passwordless sudo to prepare deployment paths under privileged directories
     required: false
@@ -37,12 +41,16 @@ runs:
     - name: Create environment payload
       shell: bash
       env:
+        PROJECT_PATH: ${{ inputs.project-path }}
         ENVIRONMENT_FILE: ${{ inputs.environment-file }}
         ENVIRONMENT_VARS_JSON: ${{ inputs.environment-vars-json }}
       run: |
         set -Eeuo pipefail
         payload_file="$RUNNER_TEMP/deploy-env"
-        default_file="$ENVIRONMENT_FILE.default"
+        default_file="${PROJECT_PATH%/}/$ENVIRONMENT_FILE.default"
+        if [ ! -f "$default_file" ]; then
+          default_file="$ENVIRONMENT_FILE.default"
+        fi
         if [ -f "$default_file" ]; then
             jq -e 'type == "object"' <<< "$ENVIRONMENT_VARS_JSON" >/dev/null
             defaults='{}'
@@ -114,16 +122,21 @@ runs:
         SERVER_USER: ${{ inputs.user }}
         SERVER_SSH_PORT: ${{ inputs.port }}
         DEPLOY_PATH: ${{ inputs.deploy-path }}
+        PROJECT_PATH: ${{ inputs.project-path }}
         ENVIRONMENT_FILE: ${{ inputs.environment-file }}
       run: |
         set -Eeuo pipefail
+        if [ ! -d "$PROJECT_PATH" ]; then
+          echo "Project directory not found: $PROJECT_PATH" >&2
+          exit 1
+        fi
         ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
         rsync -az --delete \
           --exclude='.git/' \
           --exclude='.github/' \
           --exclude='.deploy-backups/' \
           --exclude="$ENVIRONMENT_FILE" \
-          -e "ssh ${ssh_args[*]}" ./ "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
+          -e "ssh ${ssh_args[*]}" "$PROJECT_PATH/" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
 
     - name: Transfer environment payload
       shell: bash
