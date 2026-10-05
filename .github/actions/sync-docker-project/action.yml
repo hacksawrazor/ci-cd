@@ -21,6 +21,10 @@ inputs:
     description: Local project directory whose contents are synchronized
     required: false
     default: .
+  preserve-paths:
+    description: Newline-separated project-relative paths to preserve on the remote host during sync
+    required: false
+    default: ''
   use-sudo:
     description: Use passwordless sudo to prepare deployment paths under privileged directories
     required: false
@@ -123,6 +127,7 @@ runs:
         SERVER_SSH_PORT: ${{ inputs.port }}
         DEPLOY_PATH: ${{ inputs.deploy-path }}
         PROJECT_PATH: ${{ inputs.project-path }}
+        PRESERVE_PATHS: ${{ inputs.preserve-paths }}
         ENVIRONMENT_FILE: ${{ inputs.environment-file }}
       run: |
         set -Eeuo pipefail
@@ -131,12 +136,18 @@ runs:
           exit 1
         fi
         ssh_args=(-i "$SSH_DIR/id_ed25519" -p "$SERVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts")
-        rsync -az --delete \
+        rsync_args=(-az --delete \
           --exclude='.git/' \
           --exclude='.github/' \
           --exclude='.deploy-backups/' \
-          --exclude="$ENVIRONMENT_FILE" \
-          -e "ssh ${ssh_args[*]}" "$PROJECT_PATH/" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
+          --exclude="$ENVIRONMENT_FILE")
+        while IFS= read -r path; do
+          if [[ -n "$path" ]]; then
+            rsync_args+=(--exclude="/${path#/}")
+          fi
+        done <<< "$PRESERVE_PATHS"
+        rsync_args+=(-e "ssh ${ssh_args[*]}" "$PROJECT_PATH/" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/")
+        rsync "${rsync_args[@]}"
 
     - name: Transfer environment payload
       shell: bash

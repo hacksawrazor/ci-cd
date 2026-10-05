@@ -26,6 +26,11 @@ on:
         required: false
         type: string
         default: .
+      preserve-paths:
+        description: Newline-separated project-relative paths to preserve on the remote host during sync
+        required: false
+        type: string
+        default: ''
       remote-compose-file:
         description: Compose file path relative to deploy-path (defaults to compose-file)
         required: false
@@ -138,6 +143,7 @@ jobs:
           port: ${{ secrets.SERVER_SSH_PORT || '22' }}
           deploy-path: ${{ inputs.deploy-path }}
           project-path: ${{ inputs.project-path }}
+          preserve-paths: ${{ inputs.preserve-paths }}
           use-sudo: ${{ inputs.use-sudo }}
           environment-file: ${{ inputs.environment-file }}
           environment-vars-json: ${{ inputs.environment-vars-json }}
