@@ -22,6 +22,10 @@ on:
         description: 'Target path on Oracle Cloud server'
         required: true
         type: string
+      environment:
+        type: string
+        required: false
+        default: 'prod-oci'
     secrets:
       SSH_HOST:
         required: true
@@ -35,6 +39,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
 
     steps:
       - name: Checkout repository
