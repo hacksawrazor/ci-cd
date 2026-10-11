@@ -1,4 +1,4 @@
-name: Build Webapp (pnpm)
+name: Build Webapp
 description: Install pnpm dependencies and build a monorepo application.
 inputs:
   node-version:
@@ -16,7 +16,7 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: 'pnpm'
+        # Removed cache: 'pnpm' here so it doesn't crash before pnpm exists
 
     - name: Enable Corepack & Activate Pnpm
       shell: bash
