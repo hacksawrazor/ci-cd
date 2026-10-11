@@ -19,7 +19,7 @@ on:
         type: string
         default: 'apps/home/dist'
       deploy-path:
-        description: 'Target path on Oracle Cloud server (e.g., /var/www/html)'
+        description: 'Target path on Oracle Cloud server'
         required: true
         type: string
     secrets:
@@ -40,13 +40,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Enable Corepack & Setup Pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
-
       - name: Build React App
-        uses: hacksawrazor/ci-cd/.github/actions/build-webapp@main
+        uses: hacksawrazor/ci-cd/.github/actions/build-webapp-pnpm@main
         with:
           node-version: ${{ inputs.node-version }}
           build-command: ${{ inputs.build-command }}
