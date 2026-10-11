@@ -1,0 +1,63 @@
+name: Reusable React Build & SSH Deploy
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to set up'
+        required: false
+        type: string
+        default: '24'
+      build-command:
+        description: 'Command to build the monorepo package'
+        required: false
+        type: string
+        default: 'pnpm --filter home build'
+      build-dir:
+        description: 'Directory containing built assets relative to repo root'
+        required: false
+        type: string
+        default: 'apps/home/dist'
+      deploy-path:
+        description: 'Target path on Oracle Cloud server (e.g., /var/www/html)'
+        required: true
+        type: string
+    secrets:
+      SSH_HOST:
+        required: true
+      SSH_USER:
+        required: true
+      SSH_KEY:
+        required: true
+      SSH_PORT:
+        required: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack & Setup Pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      - name: Build React App
+        uses: hacksawrazor/ci-cd/.github/actions/build-webapp@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          build-command: ${{ inputs.build-command }}
+
+      - name: Deploy to Oracle Cloud via Rsync over SSH
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          ARGS: "-r -l -g -o -D -v -c --delete"
+          SOURCE: "${{ inputs.build-dir }}/"
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ inputs.deploy-path }}
+          REMOTE_PORT: ${{ secrets.SSH_PORT || '22' }}
