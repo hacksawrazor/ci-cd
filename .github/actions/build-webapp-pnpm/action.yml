@@ -1,0 +1,33 @@
+name: Build Webapp
+description: Install pnpm dependencies and build a monorepo application.
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: '24'
+  build-command:
+    description: Command used to build the application
+    required: false
+    default: 'pnpm --filter home build'
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        # Removed cache: 'pnpm' here so it doesn't crash before pnpm exists
+
+    - name: Enable Corepack & Activate Pnpm
+      shell: bash
+      run: |
+        corepack enable
+        corepack prepare pnpm@latest --activate
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Build webapp
+      shell: bash
+      run: ${{ inputs.build-command }}
