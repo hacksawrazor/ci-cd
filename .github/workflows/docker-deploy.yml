@@ -71,6 +71,11 @@ on:
         required: false
         type: boolean
         default: true
+      force-recreate:
+        description: Force recreate containers even if Compose definition is unchanged
+        required: false
+        type: boolean
+        default: false
       prune:
         description: Remove unused Docker images after a successful deployment
         required: false
@@ -164,6 +169,7 @@ jobs:
           pull-images: ${{ inputs.pull-images }}
           health-check: ${{ inputs.health-check }}
           remove-orphans: ${{ inputs.remove-orphans }}
+          force-recreate: ${{ inputs.force-recreate }}
           prune: ${{ inputs.prune }}
           dry-run: ${{ inputs.dry-run }}
           release-id: ${{ github.sha }}

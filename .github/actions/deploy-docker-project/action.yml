@@ -43,6 +43,10 @@ inputs:
     description: Remove services not present in the Compose project
     required: false
     default: 'true'
+  force-recreate:
+    description: Force recreate containers even if Compose definition is unchanged
+    required: false
+    default: 'false'
   prune:
     description: Remove unused Docker images after deployment
     required: false
@@ -72,6 +76,7 @@ runs:
         PULL_IMAGES: ${{ inputs.pull-images }}
         HEALTH_CHECK: ${{ inputs.health-check }}
         REMOVE_ORPHANS: ${{ inputs.remove-orphans }}
+        FORCE_RECREATE: ${{ inputs.force-recreate }}
         PRUNE: ${{ inputs.prune }}
         DRY_RUN: ${{ inputs.dry-run }}
         RELEASE_ID: ${{ inputs.release-id }}
@@ -82,7 +87,7 @@ runs:
         timeout --signal=TERM --kill-after=30s 15m ssh "${ssh_args[@]}" "$remote" env \
           DEPLOY_PATH="$DEPLOY_PATH" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT="$COMPOSE_PROJECT" \
           ENVIRONMENT_FILE="$ENVIRONMENT_FILE" SERVICES="$SERVICES" PULL_IMAGES="$PULL_IMAGES" \
-          HEALTH_CHECK="$HEALTH_CHECK" REMOVE_ORPHANS="$REMOVE_ORPHANS" PRUNE="$PRUNE" \
+          HEALTH_CHECK="$HEALTH_CHECK" REMOVE_ORPHANS="$REMOVE_ORPHANS" FORCE_RECREATE="$FORCE_RECREATE" PRUNE="$PRUNE" \
           DRY_RUN="$DRY_RUN" RELEASE_ID="$RELEASE_ID" \
           'bash -s' <<'REMOTE'
         set -Eeuo pipefail
@@ -134,6 +139,9 @@ runs:
         up_args=(up -d)
         if [ -n "$SERVICES" ]; then
           up_args+=(--no-deps)
+        fi
+        if [ "$FORCE_RECREATE" = "true" ]; then
+          up_args+=(--force-recreate)
         fi
         if [ "$REMOVE_ORPHANS" = "true" ]; then
           up_args+=(--remove-orphans)
