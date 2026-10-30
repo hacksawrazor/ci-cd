@@ -83,9 +83,9 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          oci_ssh_args=( -i "$OCI_SSH_DIR/id_ed25519" -p "$OCI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$OCI_SSH_DIR/known_hosts" )
-          ec2_ssh_args=( -i "$EC2_SSH_DIR/id_ed25519" -p "$EC2_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$EC2_SSH_DIR/known_hosts" )
-          oci1c_ssh_args=( -i "$O1C_SSH_DIR/id_ed25519" -p "$O1C_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$O1C_SSH_DIR/known_hosts" )
+          oci_ssh_args=( -i "$OCI_SSH_DIR/id_ed25519" -p "$OCI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$OCI_SSH_DIR/known_hosts" )
+          ec2_ssh_args=( -i "$EC2_SSH_DIR/id_ed25519" -p "$EC2_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$EC2_SSH_DIR/known_hosts" )
+          oci1c_ssh_args=( -i "$O1C_SSH_DIR/id_ed25519" -p "$O1C_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$O1C_SSH_DIR/known_hosts" )
           declare -A ARG_MAP=( ["oci"]="oci_ssh_args" ["ec2"]="ec2_ssh_args" ["oci-1c"]="oci1c_ssh_args" )
           src_args_name="${ARG_MAP[$SOURCE_SERVER]}"
           dst_args_name="${ARG_MAP[$DEST_SERVER]}"
@@ -111,5 +111,5 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
         run: |
           set -Eeuo pipefail
-          ssh_args=( -i "$SSH_DIR/id_ed25519" -p "$SERVER_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" )
+          ssh_args=( -i "$SSH_DIR/id_ed25519" -p "$SERVER_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$SSH_DIR/known_hosts" )
           ssh "${ssh_args[@]}" "$SERVER_USER@$SERVER_HOST" 'sudo -n docker exec nginx nginx -t && sudo -n docker exec nginx nginx -s reload'
