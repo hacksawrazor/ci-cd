@@ -24,32 +24,32 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Configure OCI SSH
+      - name: Configure OCI SSH (source)
         id: oci-ssh
         uses: ./.github/actions/configure-ssh
         with:
-          host: ${{ secrets.SERVER_HOST_OCI_1C }}
-          key: ${{ secrets.SERVER_SSH_KEY_OCI_1C }}
-          port: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
-          directory-name: oci-1c-ssh
+          host: ${{ secrets.SERVER_HOST_OCI }}
+          key: ${{ secrets.SERVER_SSH_KEY_OCI }}
+          port: ${{ secrets.SERVER_SSH_PORT_OCI || '22' }}
+          directory-name: oci-source-ssh
 
-      - name: Configure EC2 SSH
-        id: ec2-ssh
+      - name: Configure OCI_1C SSH (destination)
+        id: oci-1c-ssh
         uses: ./.github/actions/configure-ssh
         with:
           host: ${{ secrets.SERVER_HOST_OCI_1C }}
           key: ${{ secrets.SERVER_SSH_KEY_OCI_1C }}
           port: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
-          directory-name: oci-1c-ssh
+          directory-name: oci-1c-dest-ssh
 
       - name: Stream certificates from OCI to OCI_1C
         shell: bash
         env:
           OCI_SSH_DIR: ${{ steps.oci-ssh.outputs.ssh-dir }}
-          OCI_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
-          OCI_USER: ${{ secrets.SERVER_USER_OCI_1C }}
-          OCI_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
-          OCI_1C_SSH_DIR: ${{ steps.ec2-ssh.outputs.ssh-dir }}
+          OCI_HOST: ${{ secrets.SERVER_HOST_OCI }}
+          OCI_USER: ${{ secrets.SERVER_USER_OCI }}
+          OCI_PORT: ${{ secrets.SERVER_SSH_PORT_OCI || '22' }}
+          OCI_1C_SSH_DIR: ${{ steps.oci-1c-ssh.outputs.ssh-dir }}
           OCI_1C_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
           OCI_1C_USER: ${{ secrets.SERVER_USER_OCI_1C }}
           OCI_1C_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
@@ -80,7 +80,7 @@ jobs:
         if: ${{ inputs.reload-nginx }}
         shell: bash
         env:
-          SSH_DIR: ${{ steps.ec2-ssh.outputs.ssh-dir }}
+          SSH_DIR: ${{ steps.oci-1c-ssh.outputs.ssh-dir }}
           SERVER_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
           SERVER_USER: ${{ secrets.SERVER_USER_OCI_1C }}
           SERVER_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
