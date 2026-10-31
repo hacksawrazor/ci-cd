@@ -1,0 +1,97 @@
+name: Sync SSL Certificates from OCI to OCI_1C
+
+on:
+  workflow_dispatch:
+    inputs:
+      reload-nginx:
+        description: Reload the Nginx container after the certificate sync
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ssl-certificates-oci-oci-1c
+  cancel-in-progress: false
+
+jobs:
+  sync-certificates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure OCI SSH
+        id: oci-ssh
+        uses: ./.github/actions/configure-ssh
+        with:
+          host: ${{ secrets.SERVER_HOST_OCI_1C }}
+          key: ${{ secrets.SERVER_SSH_KEY_OCI_1C }}
+          port: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
+          directory-name: oci-1c-ssh
+
+      - name: Configure EC2 SSH
+        id: ec2-ssh
+        uses: ./.github/actions/configure-ssh
+        with:
+          host: ${{ secrets.SERVER_HOST_OCI_1C }}
+          key: ${{ secrets.SERVER_SSH_KEY_OCI_1C }}
+          port: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
+          directory-name: oci-1c-ssh
+
+      - name: Stream certificates from OCI to OCI_1C
+        shell: bash
+        env:
+          OCI_SSH_DIR: ${{ steps.oci-ssh.outputs.ssh-dir }}
+          OCI_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
+          OCI_USER: ${{ secrets.SERVER_USER_OCI_1C }}
+          OCI_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
+          OCI_1C_SSH_DIR: ${{ steps.ec2-ssh.outputs.ssh-dir }}
+          OCI_1C_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
+          OCI_1C_USER: ${{ secrets.SERVER_USER_OCI_1C }}
+          OCI_1C_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
+        run: |
+          set -Eeuo pipefail
+
+          oci_ssh=(
+            -i "$OCI_SSH_DIR/id_ed25519"
+            -p "$OCI_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$OCI_SSH_DIR/known_hosts"
+          )
+          oci_1c_ssh=(
+            -i "$OCI_1C_SSH_DIR/id_ed25519"
+            -p "$OCI_1C_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$OCI_1C_SSH_DIR/known_hosts"
+          )
+
+          ssh "${oci_ssh[@]}" "$OCI_USER@$OCI_HOST" \
+            'sudo -n tar --create --gzip --file=- --directory=/ etc/letsencrypt' \
+            | ssh "${oci_1c_ssh[@]}" "$OCI_1C_USER@$OCI_1C_HOST" \
+              'sudo -n tar --extract --gzip --file=- --directory=/'
+
+      - name: Reload Nginx on OCI_1C
+        if: ${{ inputs.reload-nginx }}
+        shell: bash
+        env:
+          SSH_DIR: ${{ steps.ec2-ssh.outputs.ssh-dir }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
+          SERVER_USER: ${{ secrets.SERVER_USER_OCI_1C }}
+          SERVER_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
+        run: |
+          set -Eeuo pipefail
+          ssh_args=(
+            -i "$SSH_DIR/id_ed25519"
+            -p "$SERVER_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts"
+          )
+          ssh "${ssh_args[@]}" "$SERVER_USER@$SERVER_HOST" \
+            'sudo -n docker exec nginx nginx -t && sudo -n docker exec nginx nginx -s reload'

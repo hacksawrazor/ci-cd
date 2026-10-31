@@ -8,18 +8,6 @@ on:
         required: false
         type: boolean
         default: true
-      source-server:
-        description: Source server
-        required: true
-        type: choice
-        options: [oci, ec2, oci-1c]
-        default: oci
-      dest-server:
-        description: Destination server
-        required: true
-        type: choice
-        options: [oci, ec2, oci-1c]
-        default: ec2
 
 permissions:
   contents: read
@@ -54,15 +42,6 @@ jobs:
           port: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
           directory-name: ec2-ssh
 
-      - name: Configure oci-1c SSH
-        id: oci-1c-ssh
-        uses: ./.github/actions/configure-ssh
-        with:
-          host: ${{ secrets.SERVER_HOST_OCI_1C }}
-          key: ${{ secrets.SERVER_SSH_KEY_OCI_1C }}
-          port: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
-          directory-name: oci-1c-ssh
-
       - name: Stream certificates from OCI to EC2
         shell: bash
         env:
@@ -74,34 +53,30 @@ jobs:
           EC2_HOST: ${{ secrets.SERVER_HOST_EC2 }}
           EC2_USER: ${{ secrets.SERVER_USER_EC2 }}
           EC2_PORT: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
-          O1C_SSH_DIR: ${{ steps.oci-1c-ssh.outputs.ssh-dir }}
-          O1C_HOST: ${{ secrets.SERVER_HOST_OCI_1C }}
-          O1C_USER: ${{ secrets.SERVER_USER_OCI_1C }}
-          O1C_PORT: ${{ secrets.SERVER_SSH_PORT_OCI_1C || '22' }}
-          SOURCE_SERVER: ${{ inputs.source-server }}
-          DEST_SERVER: ${{ inputs.dest-server }}
         run: |
           set -Eeuo pipefail
 
-          oci_ssh_args=( -i "$OCI_SSH_DIR/id_ed25519" -p "$OCI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$OCI_SSH_DIR/known_hosts" )
-          ec2_ssh_args=( -i "$EC2_SSH_DIR/id_ed25519" -p "$EC2_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$EC2_SSH_DIR/known_hosts" )
-          oci1c_ssh_args=( -i "$O1C_SSH_DIR/id_ed25519" -p "$O1C_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$O1C_SSH_DIR/known_hosts" )
-          declare -A ARG_MAP=( ["oci"]="oci_ssh_args" ["ec2"]="ec2_ssh_args" ["oci-1c"]="oci1c_ssh_args" )
-          src_args_name="${ARG_MAP[$SOURCE_SERVER]}"
-          dst_args_name="${ARG_MAP[$DEST_SERVER]}"
-          case "$SOURCE_SERVER" in
-            oci) src_host="$OCI_HOST"; src_user="$OCI_USER" ;;
-            ec2) src_host="$EC2_HOST"; src_user="$EC2_USER" ;;
-            oci-1c) src_host="$O1C_HOST"; src_user="$O1C_USER" ;;
-          esac
-          case "$DEST_SERVER" in
-            oci) dst_host="$OCI_HOST"; dst_user="$OCI_USER" ;;
-            ec2) dst_host="$EC2_HOST"; dst_user="$EC2_USER" ;;
-            oci-1c) dst_host="$O1C_HOST"; dst_user="$O1C_USER" ;;
-          esac
-          ssh "${!src_args_name[@]}" "$src_user@$src_host" 'sudo -n tar --create --gzip --file=- --directory=/ etc/letsencrypt' | ssh "${!dst_args_name[@]}" "$dst_user@$dst_host" 'sudo -n tar --extract --gzip --file=- --directory=/'
+          oci_ssh=(
+            -i "$OCI_SSH_DIR/id_ed25519"
+            -p "$OCI_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$OCI_SSH_DIR/known_hosts"
+          )
+          ec2_ssh=(
+            -i "$EC2_SSH_DIR/id_ed25519"
+            -p "$EC2_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$EC2_SSH_DIR/known_hosts"
+          )
 
-      - name: Reload Nginx on ${{ inputs.dest-server }}
+          ssh "${oci_ssh[@]}" "$OCI_USER@$OCI_HOST" \
+            'sudo -n tar --create --gzip --file=- --directory=/ etc/letsencrypt' \
+            | ssh "${ec2_ssh[@]}" "$EC2_USER@$EC2_HOST" \
+              'sudo -n tar --extract --gzip --file=- --directory=/'
+
+      - name: Reload Nginx on EC2
         if: ${{ inputs.reload-nginx }}
         shell: bash
         env:
@@ -111,5 +86,12 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_SSH_PORT_EC2 || '22' }}
         run: |
           set -Eeuo pipefail
-          ssh_args=( -i "$SSH_DIR/id_ed25519" -p "$SERVER_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$SSH_DIR/known_hosts" )
-          ssh "${ssh_args[@]}" "$SERVER_USER@$SERVER_HOST" 'sudo -n docker exec nginx nginx -t && sudo -n docker exec nginx nginx -s reload'
+          ssh_args=(
+            -i "$SSH_DIR/id_ed25519"
+            -p "$SERVER_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts"
+          )
+          ssh "${ssh_args[@]}" "$SERVER_USER@$SERVER_HOST" \
+            'sudo -n docker exec nginx nginx -t && sudo -n docker exec nginx nginx -s reload'
